@@ -32,7 +32,7 @@ void mkdir_cmd(char *dirname){
 void cd_cmd(char *dirname){
      // if(chdir(dirname) == 0){
       chdir("opens/user/home");   // must have
-      if(chdir(dirname) == NULL){ // гарантирую что не выйдет за граници FS
+      if(chdir(dirname) != 0){ // гарантирую что не выйдет за граници FS
           printf("AmmSH: No such derictory.\n");
           return;
       }
