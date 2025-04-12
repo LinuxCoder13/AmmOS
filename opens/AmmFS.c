@@ -9,7 +9,15 @@
 
 #define MAX_PATH 256
 
-char *path[MAX_PATH];
+char path[MAX_PATH];
+
+void mkfile(char *filename){
+   FILE *fl = fopen(filename, "w");
+   if (!fl){
+      perror("NONE\n");
+   }
+   fclose();
+}
 
 void mkdir_cmd(char *dirname){
    if (mkdir(dirname, 0775) == 0){
@@ -22,11 +30,13 @@ void mkdir_cmd(char *dirname){
 }
 
 void cd_cmd(char *dirname){
-    if(chdir(dirname) == 0){
-
-
-
-    }
+     // if(chdir(dirname) == 0){
+      chdir("opens/user/home");   // must have
+      if(chdir(dirname) == NULL){ // гарантирую что не выйдет за граници FS
+          printf("AmmSH: No such derictory.\n");
+          return;
+      }
 }
 
+// void ls_cmd();
 
