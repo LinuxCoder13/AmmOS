@@ -25,8 +25,7 @@ int int_ascii(int integer){
     return (char)integer;
 }
 void ascii_str(int *arr, int sizearr, char *out){
-    int i = 0;
-    for (i; i<sizearr; i++){
+    for (int i=0; i<sizearr; i++){
         out[i] = (char)arr[i];
     }
     out[sizearr] = '\0';
