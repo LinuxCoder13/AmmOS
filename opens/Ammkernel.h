@@ -3,7 +3,7 @@
 #define MAX_PATH 256
 
 #define FS_ROOT "opens/user/main"
-extern path[MAX_PATH];
+extern char path[MAX_PATH];
 
 void str_ascii(char *str, int *arr);
 int ascii_int(char c);
