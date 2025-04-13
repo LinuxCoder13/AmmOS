@@ -60,6 +60,7 @@ void AmmIDE(){
     chdir(FS_ROOT);
     chdir("../../..");
     
+
     while (1){
         char buff[30];
         const char *commads[] = {"push ", "free", "read"};

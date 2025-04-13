@@ -35,14 +35,15 @@ int main(void) {
             system("clear");
             AmmIDE();
         } 
-       else if (strncmp(command, "go ", 3) == 0){
+        else if(strncmp(command, "mkdir ", 5) == 0){
+            removen(command, 5);
+            mkdir(command);
+        }
+        else if (strncmp(command, "go ", 3) == 0){
             removen(command, 3);
             cd_cmd(command);   // функция в AmmFS.c
         }
-        else if(strncmp(command, "mkdir ", 5) == 0){
-            removen(command, 5);
-            mkdir_cmd(command);
-        }
+
         else if(strcmp(command, "ls") == 0){
             ls_cmd();
         }
