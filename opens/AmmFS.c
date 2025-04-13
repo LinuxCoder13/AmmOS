@@ -32,7 +32,7 @@ void mkfile(char *filename){
    if (!fl){
       perror("AmmSH\n");
    }
-   fclose(filename);
+   fclose(fl);
 }
 
 void mkdir_cmd(char *dirname){
