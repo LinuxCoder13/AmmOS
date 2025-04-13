@@ -31,7 +31,8 @@ void ascii_str(int *arr, int sizearr, char *out){
     out[sizearr] = '\0';
 }
 void memload(){
-
+    chdir(FS_ROOT);
+    chdir("../../..");
    
     char buf[200];
     sprintf(buf, "Memory/memory.dat");
@@ -56,8 +57,9 @@ void removen(char *str, int n){
 // now functions for os
 
 void AmmIDE(){
+    chdir(FS_ROOT);
+    chdir("../../..");
     
-
     while (1){
         char buff[30];
         const char *commads[] = {"push ", "free", "read"};
