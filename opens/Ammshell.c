@@ -7,30 +7,24 @@
 #include <sys/stat.h>
 
 int main(void) {
-    char path[256];
-    int len = 0;
-    char *mainpwd = malloc(sizeof(char) * 1024);   // кушаю твой память
-    
-    getcwd(mainpwd, 1024);
-    char *ospwd = strstr(mainpwd, "/main");
-    sprintf(path, "~%s", ospwd + strlen("/main")); // убираем наху "/main" с    принтуем в path "~" для даланса вселеной
-    
-    free(mainpwd); // чють не забыл  
-    
+
+    chdir(FS_ROOT);
+    up_path();
+
     while (1) {
         char command[30];
-        
-        printf("[root]AmmOS ~$: ");
+
+        printf("[root]AmmOS %s$: ", path);
         fgets(command, sizeof(command), stdin);
-            
+
         command[strcspn(command, "\n")] = 0;
-        
+
         if (strcmp(command, "c") == 0) {
             system("clear");
         }
         else if (strcmp(command, "") == 0){
             continue;
-        }  
+        }
         else if (strcmp(command, "ex") == 0) {
             exit(60); // выход с кодом 60
         }
@@ -41,9 +35,20 @@ int main(void) {
             system("clear");
             AmmIDE();
         } 
-        else if (strncmp(command, "cd ", 3) == 0){
+       else if (strncmp(command, "go ", 3) == 0){
             removen(command, 3);
             cd_cmd(command);   // функция в AmmFS.c
+        }
+        else if(strncmp(command, "mkdir ", 5) == 0){
+            removen(command, 5);
+            mkdir_cmd(command);
+        }
+        else if(strcmp(command, "ls") == 0){
+            ls_cmd();
+        }
+        else if(strncmp(command, "touch ", 6) == 0){
+            removen(command, 6);
+            mkfile(command);
         }
         else {
             printf("AmmSh: command not found!\n");
