@@ -90,38 +90,4 @@ void ls_cmd(){
 
      }
   }
-void cd_cmd(char *dirname){
-      char old[256], nw[256];
-      getcwd(old, sizeof(old));
-       
-      if(chdir(dirname) != 0){
-        printf("AmmSH: no such folder.\n");
-        return;
-      }  
-      
-      getcwd(nw, sizeof(nw));
-      if(!strstr(nw, "/main")){
-        chdir(old);
-        printf("AmmSH: Access denied. Stay inside AmmFS.\n");
-      }    
-
-      up_path();
-}
-
-
- void ls_cmd(){
-    DIR *d = opendir(".");
-    struct dirent *dir;
-    struct stat st;
-    printf("\n");
-
-    while((dir = readdir(d)) != NULL){
-    if(dir->d_name[0] == '.') continue;
-    if(S_ISDIR(st.st_mode)) printf("\003[1;34m%s\033[0m  \n", dir->d_name);
-    else{
-        printf("%s  \n", dir->d_name);
-    }
-
-    }
- }
 

@@ -37,7 +37,7 @@ int main(void) {
         } 
         else if(strncmp(command, "mkdir ", 5) == 0){
             removen(command, 5);
-            mkdir(command);
+            mkdir(command, 0755);
         }
         else if (strncmp(command, "go ", 3) == 0){
             removen(command, 3);
