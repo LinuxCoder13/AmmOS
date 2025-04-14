@@ -47,6 +47,12 @@ void mkdir_cmd(char *dirname){
          printf("AmmSH: folder '%s' already exists.\n", dirname);
          return;
     }
+    
+    //int len = strlen(dirname);
+
+    //if(dirname == "" && dirname[0] == ' ' && dirname[len] == ' '){
+    //    printf("AmmSH: please enter valid name\n");
+    //}
 
     if (mkdir(dirname, 0775) == 0){
          return;
@@ -85,9 +91,10 @@ void ls_cmd(){
      if(dir->d_name[0] == '.') continue;
      if(S_ISDIR(st.st_mode)) printf("\003[1;34m%s\033[0m  \n", dir->d_name);
      else{
-         printf("%s  \n", dir->d_name);
+         printf("%s  ", dir->d_name);
      }
-
+        
      }
+     printf("\n");
   }
 
