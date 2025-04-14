@@ -20,5 +20,7 @@ void mkdir_cmd(char *dirname);
 void cd_cmd(char *dirname);
 void up_path();
 void ls_cmd();
+void sizeinfo(char *filename);
+void cat_cmd(char *filename);
 
 #endif

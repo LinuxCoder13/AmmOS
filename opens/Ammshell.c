@@ -35,15 +35,18 @@ int main(void) {
             system("clear");
             AmmIDE();
         } 
-        else if(strncmp(command, "mkdir ", 5) == 0){
-            removen(command, 5);
+        else if(strncmp(command, "mkdir ", 6) == 0){
+            removen(command, 6);
             mkdir(command, 0755);
         }
         else if (strncmp(command, "go ", 3) == 0){
             removen(command, 3);
             cd_cmd(command);   // функция в AmmFS.c
         }
-
+        else if(strncmp(command, "sizeof ", 7) == 0){
+            removen(command, 7);
+            sizeinfo(command);
+        }
         else if(strcmp(command, "ls") == 0){
             ls_cmd();
         }
@@ -51,10 +54,20 @@ int main(void) {
             removen(command, 6);
             mkfile(command);
         }
+        else if(strncmp(command, "nano ", 5) == 0){
+            removen(command, 5);
+            char tmp[20];
+            sprintf(tmp, "nano %s", command);
+            system(tmp);
+        }
+        else if(strncmp(command, "r ", 2) == 0){
+            removen(command, 2);
+            cat_cmd(command);
+        }
         else {
             printf("AmmSh: command not found!\n");
         }
     }
-
+        
     return 0;
 }

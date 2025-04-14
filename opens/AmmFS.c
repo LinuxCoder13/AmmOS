@@ -48,12 +48,6 @@ void mkdir_cmd(char *dirname){
          return;
     }
     
-    //int len = strlen(dirname);
-
-    //if(dirname == "" && dirname[0] == ' ' && dirname[len] == ' '){
-    //    printf("AmmSH: please enter valid name\n");
-    //}
-
     if (mkdir(dirname, 0775) == 0){
          return;
     }
@@ -89,7 +83,7 @@ void ls_cmd(){
 
      while((dir = readdir(d)) != NULL){
      if(dir->d_name[0] == '.') continue;
-     if(S_ISDIR(st.st_mode)) printf("\003[1;34m%s\033[0m  \n", dir->d_name);
+     if(S_ISDIR(st.st_mode)) printf("%s  \n", dir->d_name);
      else{
          printf("%s  ", dir->d_name);
      }
@@ -97,4 +91,56 @@ void ls_cmd(){
      }
      printf("\n");
   }
+
+void sizeinfo(char *filename){
+    struct stat info;  // вся инфа о filename
+
+    if(stat(filename, &info) == 0){
+        printf("f size: %ld bytes\n", info.st_size);
+    }
+    else{
+        printf("AmmSH: No such file or dir.\n");
+    }
+    
+}
+
+void cat_cmd(char *filename){
+    struct stat info;
+    
+    if(stat(filename, &info) != 0){
+       printf("AmmSH: I didn't find '%s' go hell\n", filename);
+       return;
+    }
+
+    if(stat(filename, &info) == 0){
+        if(S_ISDIR(info.st_mode))
+            printf("AmmSH: That's a papka\n");
+
+        
+            FILE *fl = fopen(filename, "r");
+            if(fl == NULL){
+                perror("AmmSH");
+                return;
+            }
+            char *tmp = malloc(1024);    //  надеюсь хватит
+            if (!tmp){
+                perror("malloc fail");
+                fclose(fl);
+            }                            
+            while((fgets(tmp, 1024, fl)) != NULL){
+                printf("%s", tmp);
+
+            }
+
+         free(tmp); 
+         fclose(fl);
+   }
+}
+
+
+
+
+
+
+
 
