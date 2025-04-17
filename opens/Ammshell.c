@@ -20,7 +20,7 @@ int main(void) {
         command[strcspn(command, "\n")] = 0;
 
         if (strcmp(command, "c") == 0) {
-            system("clear");
+            printf("\033[2J\033[H");
         }
         else if (strcmp(command, "") == 0){
             continue;
