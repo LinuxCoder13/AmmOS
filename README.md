@@ -1,6 +1,36 @@
-# как запустить ОС? -> 1) когда скачали псевдо тока надо повысить права "chmod +x ./opens/Ammshell" и запускаете "./run"
-# возможные проблемы: вы можете найти лазейку в ос но это бето-свежая верси (не судите строго я навичек) но ос запускается
-# shell гайд -> ex, c, AmmIDE(push <число 1-256>, free, read), load.
+											      
+AmmOS - is open sourse guest OS is made for experimental/educational purpose it's can be runed only in Linux(Debian, Ubuntu, ... WSL2, termux) (Some times in MacOS). for compile write in /opens folder ->
+(gcc Ammshell.c Ammkernel.c AmmFS.c -o Ammshell) and run in main folder (./run).
 
-# Важно ОС можно запустить тока на: wsl 2, Linux все дистрибутивы, Unix-подобные ос.
-# VERSION - 1.0.1
+commands --->
+
+1) c - is clearing screen like "clear" in bash BUT using ASCII to do it.
+
+2) ex - to exit OS and go back to Linux or Windows if you use WSL2 lol ;)
+
+3) sizeof [file name] - it shows how many bytes do your file use (also work with binary file)
+
+4) AmmIDE - it's byte code editor commads ->
+	|push <num 0-256> - it's pushing to stack(in memory.dat) the ascii ex.(push 65 -> 'A')
+	|free - pop last char in stack(in memory.dat)
+	|read - load stack(memory.dat) in that ascii chars
+
+5) load - same as read but you must write not in AmmIDE
+
+6) mkdir [dir_name] - make dir in '.' folder no use (system("mkdir"))
+
+7) ls - you now ;) no use (system("ls"))
+
+8) nano [file_name] - I used system("nano") I did't do my own lmao ;)
+
+9) go [dir_name] - chdir(dir_name)
+
+10) r [file_name] - it's like cat 
+
+11) touch [file_name] - you now ;) 
+
+... SOON
+ 
+thats all BUT when you will be develop AmmOS you must be acurate with path and files
+GOOD LACK
+version - 0.4
