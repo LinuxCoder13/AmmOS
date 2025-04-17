@@ -64,6 +64,9 @@ int main(void) {
             removen(command, 2);
             cat_cmd(command);
         }
+	else if(strcmp(command, "--help") == 0){
+	    total_help();
+	}
         else {
             printf("AmmSh: command not found!\n");
         }

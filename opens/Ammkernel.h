@@ -22,5 +22,6 @@ void up_path();
 void ls_cmd();
 void sizeinfo(char *filename);
 void cat_cmd(char *filename);
+void total_help();
 
 #endif
