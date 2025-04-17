@@ -7,6 +7,9 @@
 #include <unistd.h>
 #include "Ammkernel.h"
 
+#define VERSION "0.5"
+#define KERNEL "AmmKernel"
+
 // functions that will help write kernel
 
 void str_ascii(char *str, int *arr){
@@ -117,5 +120,23 @@ void AmmIDE(){
                 
     } 
 }
+
+void total_help(){
+	chdir(FS_ROOT);
+	system("nano _help_.txt");
+}
+
+
+void neofetch(){
+	printf("")
+
+
+
+}
+
+
+
+
+
 
 
