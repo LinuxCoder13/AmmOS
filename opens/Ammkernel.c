@@ -42,7 +42,7 @@ char* username(){
 		fclose(fl_w);
 	}
 
-	chdir(fpath2); // come back to FS
+	chdir(fpath2); //  come back to FS
 	return username;
 }
 void str_ascii(char *str, int *arr){
