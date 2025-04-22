@@ -1,6 +1,6 @@
 											      
 AmmOS - is open sourse guest OS is made for experimental/educational purpose it's can be runed only in Linux(Debian, Ubuntu, ... WSL2, termux) (Some times in MacOS). for compile write in /opens folder ->
-(gcc Ammshell.c Ammkernel.c AmmFS.c -o Ammshell) and run in main folder (./run).
+(`gcc Ammshell.c Ammkernel.c AmmFS.c -o Ammshell`) and run in main folder (`./run`).
 
 commands --->
 
@@ -27,10 +27,12 @@ commands --->
 
 10) r [file_name] - it's like cat 
 
-11) touch [file_name] - you now ;) 
+11) touch [file_name] - you now ;)
+
+12) neofetch - info about AmmOS
 
 ... SOON
  
 thats all BUT when you will be develop AmmOS you must be acurate with path and files
-GOOD LACK
-version - 0.4
+GOOD LUCK
+version - 0.6
