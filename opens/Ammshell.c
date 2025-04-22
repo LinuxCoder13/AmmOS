@@ -10,11 +10,12 @@ int main(void) {
 
     chdir(FS_ROOT);
     up_path();
+    char *user = username();
 
     while (1) {
         char command[30];
 
-        printf("[root]AmmOS %s$: ", path);
+        printf("[%s]AmmOS %s$: ", user, path);
         fgets(command, sizeof(command), stdin);
 
         command[strcspn(command, "\n")] = 0;
@@ -26,6 +27,7 @@ int main(void) {
             continue;
         }
         else if (strcmp(command, "ex") == 0) {
+	    free(user);
             exit(60); // выход с кодом 60
         }
         else if (strcmp(command, "load") == 0){
@@ -64,8 +66,8 @@ int main(void) {
             removen(command, 2);
             cat_cmd(command);
         }
-	else if(strcmp(command, "--help") == 0){
-	    total_help();
+	else if(strcmp(command, "neofetch") == 0){
+	    neofetch();
 	}
         else {
             printf("AmmSh: command not found!\n");

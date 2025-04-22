@@ -8,6 +8,7 @@
 #define FS_ROOT "opens/user/main"
 extern char path[MAX_PATH];
 
+char* username();
 void str_ascii(char *str, int *arr);
 int ascii_int(char c);
 int int_ascii(int integer);
@@ -22,6 +23,6 @@ void up_path();
 void ls_cmd();
 void sizeinfo(char *filename);
 void cat_cmd(char *filename);
-void total_help();
+void neofetch();
 
 #endif

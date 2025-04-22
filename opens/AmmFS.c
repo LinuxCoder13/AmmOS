@@ -90,6 +90,7 @@ void ls_cmd(){
         
      }
      printf("\n");
+     closedir(d);
   }
 
 void sizeinfo(char *filename){
