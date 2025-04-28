@@ -31,9 +31,36 @@ commands --->
 
 12) neofetch - info about AmmOS
 
+13) getlogin - print currunt username
+
 ... SOON
  
+#AmmSH-scripts:
+AmmSH interpreter has basic commads ->
+
+1) if ... else ... endif - if can take the result of some operation ex.(if r test.txt) if "r test.txt" code doesnt return 1 it will skip till else-block, can't have nested if...else
+2) loop <index> ... endloop - doing some code <index> time can't have inside if...else
+3) if + Shell-commads
+4) one line commads ex.(go ..)
+
+Rulse:
+1) No variables (Soon)
+2) no tabs or spase at start of line
+3) to interpretate file white "AmmSH [file_name]"
+
+code example ->
+```
+if go ..
+print I went 1 dir back!
+
+else 
+print fail!
+
+endif
+
+loop 10
+neofetch
+endloop
+```
 thats all BUT when you will be develop AmmOS you must be acurate with path and files
-GOOD LUCK
-version - 0.4
 
