@@ -13,87 +13,93 @@
 char path[MAX_PATH];
 
 
- void up_path(){
-     char *mainpwd = malloc(sizeof(char) * 1024);   // кушаю твой память
+int up_path(){
+     char *mainpwd = malloc(sizeof(char) * 1024);   // кушаю твой память чтоб не втыкал
 
      getcwd(mainpwd, 1024);
      char *ospwd = strstr(mainpwd, "/main");
       if (ospwd == NULL){
           printf("AmmSH: permision denied. You can't eascape AmmFS\n");
           free(mainpwd);
-         return;
+          return 0;
      }
-     else{
-       snprintf(path, MAX_PATH,"~%s", ospwd + strlen("/main"));
+      else{
+          snprintf(path, MAX_PATH,"~%s", ospwd + strlen("/main"));
       }
       free(mainpwd); // чють не забыл
+      return 1;
   }
 
-void mkfile(char *filename){
+int mkfile(char *filename){
    
    FILE *fl = fopen(filename, "w");
    if (fl == NULL){
-
-      perror("AmmSH\n");
-   }
+    perror("AmmSH\n");
+    return 1;
+    }
    fclose(fl);
+   return 1;
 }
 
-void mkdir_cmd(char *dirname){
+int mkdir_cmd(char *dirname){
 
     struct stat str;
 
     if(stat(dirname, &str) == 0 && S_ISDIR(str.st_mode)){
          printf("AmmSH: folder '%s' already exists.\n", dirname);
-         return;
+         return 0;
     }
     
     if (mkdir(dirname, 0775) == 0){
-         return;
+         return 0;
     }
     else{
-         perror("AmmSH\n");
-        return;
+        perror("AmmSH\n");
+        return 0;
     }
+    return 1;
  }
 
-void cd_cmd(char *dirname){
+int cd_cmd(char *dirname){
         char old[256], nw[256];
         getcwd(old, sizeof(old));
  
         if(chdir(dirname) != 0){
           printf("AmmSH: no such folder.\n");
-          return;
+          return 0;
         }
  
         getcwd(nw, sizeof(nw));
         if(!strstr(nw, "/main")){
           chdir(old);
           printf("AmmSH: Access denied. Stay inside AmmFS.\n");
+          return 0;
         }
  
         up_path();
+        return 1;
  }
 
-void ls_cmd(){
+int ls_cmd(){
      DIR *d = opendir(".");
      struct dirent *dir;
      struct stat st;
      printf("\n");
 
      while((dir = readdir(d)) != NULL){
-     if(dir->d_name[0] == '.') continue;
-     if(S_ISDIR(st.st_mode)) printf("%s  \n", dir->d_name);
-     else{
-         printf("%s  ", dir->d_name);
+        if(dir->d_name[0] == '.') continue;
+        if(S_ISDIR(st.st_mode)) printf("%s  \n", dir->d_name);
+        else{
+            printf("%s  ", dir->d_name);
      }
         
      }
      printf("\n");
      closedir(d);
-  }
+     return 1;
+}
 
-void sizeinfo(char *filename){
+int sizeinfo(char *filename){
     struct stat info;  // вся инфа о filename
 
     if(stat(filename, &info) == 0){
@@ -101,16 +107,17 @@ void sizeinfo(char *filename){
     }
     else{
         printf("AmmSH: No such file or dir.\n");
+        return 0;
     }
-    
+    return 1;   
 }
 
-void cat_cmd(char *filename){
+int cat_cmd(char *filename){
     struct stat info;
     
     if(stat(filename, &info) != 0){
        printf("AmmSH: I didn't find '%s' go hell\n", filename);
-       return;
+       return 0;
     }
 
     if(stat(filename, &info) == 0){
@@ -121,12 +128,13 @@ void cat_cmd(char *filename){
             FILE *fl = fopen(filename, "r");
             if(fl == NULL){
                 perror("AmmSH");
-                return;
+                return 0;
             }
             char *tmp = malloc(1024);    //  надеюсь хватит
             if (!tmp){
                 perror("malloc fail");
                 fclose(fl);
+                return 0;
             }                            
             while((fgets(tmp, 1024, fl)) != NULL){
                 printf("%s", tmp);
@@ -136,8 +144,16 @@ void cat_cmd(char *filename){
          free(tmp); 
          fclose(fl);
    }
+   return 1;
 }
 
+int echo_cmd(char *msg){
+    if(msg == NULL){
+        return 0;
+    }
+    printf("%s\n", msg);
+    return 1;
+}
 
 
 

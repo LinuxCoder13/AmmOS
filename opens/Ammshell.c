@@ -27,14 +27,14 @@ int main(void) {
             continue;
         }
         else if (strcmp(command, "ex") == 0) {
-	    free(user);
+	        free(user);
             exit(60); // выход с кодом 60
         }
         else if (strcmp(command, "load") == 0){
             memload();
         }
         else if (strcmp(command, "AmmIDE") == 0){
-            system("clear");
+            printf("\033[2J\033[H");
             AmmIDE();
         } 
         else if(strncmp(command, "mkdir ", 6) == 0){
@@ -66,9 +66,20 @@ int main(void) {
             removen(command, 2);
             cat_cmd(command);
         }
-	else if(strcmp(command, "neofetch") == 0){
-	    neofetch();
-	}
+	    else if(strcmp(command, "neofetch") == 0){
+	        neofetch();
+	    }
+        else if(strncmp(command, "AmmSH ", 6) == 0){
+            removen(command, 6);
+            AmmSH(command);
+        }
+        else if(strncmp(command, "getlogin", 8) == 0){
+            get_username();
+        }
+        else if(strncmp(command, "say ", 4) == 0){
+            removen(command, 4);
+            echo_cmd(command);
+        }
         else {
             printf("AmmSh: command not found!\n");
         }
