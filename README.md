@@ -32,5 +32,5 @@ commands --->
 ... SOON
  
 thats all BUT when you will be develop AmmOS you must be acurate with path and files
-GOOD LACK
+GOOD LUCK
 version - 0.4

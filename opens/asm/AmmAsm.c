@@ -1,11 +1,12 @@
-// AmmAs.c
+// пока в разработке
 #include <stdio.h>
+// теперь эти ригистры ведут себя как ригистры в асемблер!
+#define AA (*(int*))0x001
+#define AB (*(int*))0x002
+#define AC (*(int*))0x003
+#define AD (*(int*))0x004
+#define AE (*(int*))0x005
+#define AF (*(int*))0x006
+#define AJ (*(int*))0x007
 
-#define AA 0x00001
-#define AB 0x00002
-#define AC 0x00003
-#define AD 0x00004
-#define AE 0x00005
-#define AF 0x00006
-#define AJ 0x00007
 
