@@ -8,25 +8,25 @@
 #include <unistd.h>
 #include <stdio.h>
 #include "Ammkernel.h"
-
+#include <signal.h>
 
 char path[MAX_PATH];
 
 
 int up_path(){
-     char *mainpwd = malloc(sizeof(char) * 1024);   // кушаю твой память чтоб не втыкал
-
+     char *mainpwd = amm_malloc(1024);   // кушаю твой память чтоб не втыкал хотя нет я кушаю свою память. блин :(
      getcwd(mainpwd, 1024);
+
      char *ospwd = strstr(mainpwd, "/main");
       if (ospwd == NULL){
           printf("AmmSH: permision denied. You can't eascape AmmFS\n");
-          free(mainpwd);
+          amm_free(mainpwd, 1024);
           return 0;
      }
       else{
           snprintf(path, MAX_PATH,"~%s", ospwd + strlen("/main"));
       }
-      free(mainpwd); // чють не забыл
+      amm_free(mainpwd, 1024); // чють не забыл
       return 1;
   }
 
@@ -35,7 +35,7 @@ int mkfile(char *filename){
    FILE *fl = fopen(filename, "w");
    if (fl == NULL){
     perror("AmmSH\n");
-    return 1;
+    return 0;
     }
    fclose(fl);
    return 1;
@@ -46,8 +46,7 @@ int mkdir_cmd(char *dirname){
     struct stat str;
 
     if(stat(dirname, &str) == 0 && S_ISDIR(str.st_mode)){
-         printf("AmmSH: folder '%s' already exists.\n", dirname);
-         return 0;
+         return 1;
     }
     
     if (mkdir(dirname, 0775) == 0){
@@ -121,16 +120,17 @@ int cat_cmd(char *filename){
     }
 
     if(stat(filename, &info) == 0){
-        if(S_ISDIR(info.st_mode))
+        if(S_ISDIR(info.st_mode)){
             printf("AmmSH: That's a papka\n");
-
+            return 0;
+        }
         
             FILE *fl = fopen(filename, "r");
             if(fl == NULL){
                 perror("AmmSH");
                 return 0;
             }
-            char *tmp = malloc(1024);    //  надеюсь хватит
+            char *tmp = amm_malloc(1024);    //  надеюсь хватит
             if (!tmp){
                 perror("malloc fail");
                 fclose(fl);
@@ -141,7 +141,7 @@ int cat_cmd(char *filename){
 
             }
 
-         free(tmp); 
+         amm_free(tmp, 1024); // мусор.  
          fclose(fl);
    }
    return 1;
@@ -154,10 +154,53 @@ int echo_cmd(char *msg){
     printf("%s\n", msg);
     return 1;
 }
+// <-|-_-|->
+// пора перестать быть вайбкодером. этап 1: говарить ии что его код говно что твой код натурал даже если он не работает
+int rm_cmd(char* dirname) {
+    struct dirent *dir;
+    struct stat st;
+    char* now_path = amm_malloc(469);
+    DIR *d = opendir(dirname);
+
+    if (!d) {
+        perror("opendir");
+        amm_free(now_path, 469);
+        return 0;
+    }
+
+    while ((dir = readdir(d)) != NULL) {
+        if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0)
+            continue;
+
+        snprintf(now_path, 469, "%s/%s", dirname, dir->d_name);
+
+        if (stat(now_path, &st) == 0) {
+            if (S_ISDIR(st.st_mode)) {
+                rm_cmd(now_path); 
+            } else {
+                remove(now_path); 
+            }
+        }
+    }
+
+    closedir(d);
+    rmdir(dirname); 
+    amm_free(now_path, 469);
+    return 1;
+}
 
 
+int rf_cmd(char* filename){
+    
+    if (remove(filename) == 0){
+        return 1;
+    }
 
-
+    else{
+        fprintf(stderr, "AmmSH: No such fl or dir\n");
+        return 0;
+    }
+}
 
 
 

@@ -5,11 +5,16 @@
 #include <locale.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <signal.h>
+
 
 int main(void) {
+    amm_init(); // init memory
+    signal(SIGSEGV, sigsegv_handler); // segfalt handler
 
     chdir(FS_ROOT);
     up_path();
+
     char *user = username();
 
     while (1) {
@@ -27,10 +32,13 @@ int main(void) {
             continue;
         }
         else if (strcmp(command, "ex") == 0) {
-	        free(user);
-            exit(60); // выход с кодом 60
+	        amm_free(user, 15);
+            exit(0); 
         }
-        else if (strcmp(command, "load") == 0){
+        else if (strcmp(command, "diskload") == 0){
+            diskread();
+        }
+        else if(strcmp(command, "memload") == 0){
             memload();
         }
         else if (strcmp(command, "AmmIDE") == 0){
@@ -79,6 +87,18 @@ int main(void) {
         else if(strncmp(command, "say ", 4) == 0){
             removen(command, 4);
             echo_cmd(command);
+        }
+        else if(strncmp(command, "rm ", 3) == 0){
+            removen(command, 3);
+            rm_cmd(command);
+        } 
+        else if(strncmp(command, "rf ", 3) == 0){
+            removen(command, 3);
+            rf_cmd(command);
+        }
+        else if(strcmp(command, "calc") == 0){
+            calc();
+            printf("\n"); 
         }
         else {
             printf("AmmSh: command not found!\n");

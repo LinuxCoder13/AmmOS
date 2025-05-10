@@ -11,11 +11,68 @@ kernel life (2025 - ...)*/
 #include <unistd.h>
 #include "Ammkernel.h"
 #include <dirent.h>
+#include <sys/mman.h>
 
 
+
+char *MEMORY; // amm_malloc(), amm_free() 
+short bit_map[MEMSIZE];  // 1, 0
 
 // functions that will help write kernel
-void cut_after_substr(char *path, const char *substr);           // must -_-
+
+void amm_init(void) {
+    MEMORY = mmap(NULL, MEMSIZE*2, PROT_READ | PROT_WRITE,
+                  MAP_PRIVATE | 0x20, -1, 0);
+    if (MEMORY == MAP_FAILED) {
+        perror("mmap failed");
+        exit(1);
+    }
+    memset(MEMORY, 0, MEMSIZE*2);  // очищаем ВСе а не только MEMSIZE
+    memset(bit_map, 0, sizeof(bit_map));  // битмап должен быть достаточно большим !.!.!.!
+}
+
+// I a sorry
+void *amm_malloc(int size) {
+    if (size <= 0) {
+        return NULL;
+    }
+
+    int blocks_needed = (size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    int consecutive = 0;
+    int total_blocks = MEMSIZE / BLOCK_SIZE;
+
+    for (int i = 0; i < total_blocks; ++i) {
+        if (!bit_map[i]) {
+            if (++consecutive == blocks_needed) {
+                int start = i - blocks_needed + 1;
+                for (int j = start; j <= i; ++j) {
+                    bit_map[j] = 1;
+                }
+                return MEMORY + start * BLOCK_SIZE;
+            }
+        } else {
+            consecutive = 0;
+        }
+    }
+
+    return NULL;
+}
+
+
+void amm_free(void *ptr, int size) {
+    if (size <= 0) return;
+    if (!ptr) return;
+
+    int start = ((char *)ptr - MEMORY) / BLOCK_SIZE;
+    int blocks = (size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    int total_blocks = MEMSIZE / BLOCK_SIZE;
+
+    for (int i = start; i < start + blocks && i < total_blocks; ++i) {
+        bit_map[i] = 0; // освобождаем биты в бит мап а в памяти?! не надо ;) 
+    }
+}
+
+void cut_after_substr(char *path, const char *substr);           
 
 char* username(){
 	char fpath[100];	
@@ -27,12 +84,12 @@ char* username(){
 	cut_after_substr(fpath, "AmmOS/opens/user");
 	chdir(fpath);
 
-	char *username = malloc(15);
+	char *username = (char* )amm_malloc(15);
 
 	FILE *fl = fopen("username.txt", "r");
 	if (fgets(username, 15, fl)) {
-                username[strcspn(username, "\n")] = '\0';
-        }
+        username[strcspn(username, "\n")] = '\0';
+    }
 
 	
 	fclose(fl);
@@ -49,6 +106,25 @@ char* username(){
 	chdir(fpath2); //  come back to FS
 	return username;
 }
+
+void removetab(char *str) { // ! thats not working !!!!
+    int i = 0;
+
+    while (str[i] == ' ' || str[i] == '\t') {
+        i++;
+    }
+
+    if (i > 0) {
+
+        int j = 0;
+        while (str[i]) {
+            str[j++] = str[i++];
+        }
+        str[j] = '\0'; 
+    }
+}
+
+
 
 int get_username(){
     char fpath[100];	
@@ -85,9 +161,40 @@ void str_ascii(char *str, int *arr){
 int ascii_int(char c){
     return (int)c;
 }
-int int_ascii(int integer){
-    return (char)integer;
+
+void int_ascii(int value, char* str) {
+    if (value == 0) {
+        str[0] = '0';
+        str[1] = '\0';
+        return;
+    }
+
+    char buff[20];
+    int i = 0;
+    int is_negative = 0;
+
+    if (value < 0) {
+        is_negative = 1;
+        value = -value;
+    }
+
+    while (value > 0) {
+        buff[i++] = (value % 10) + '0';
+        value /= 10;
+    }
+
+    if (is_negative) {
+        buff[i++] = '-';
+    }
+
+    int j = 0;
+    while (i > 0) {
+        str[j++] = buff[--i];
+    }
+    str[j] = '\0';
 }
+
+
 void ascii_str(int *arr, int sizearr, char *out){
     for (int i=0; i<sizearr; i++){
         out[i] = (char)arr[i];
@@ -96,8 +203,38 @@ void ascii_str(int *arr, int sizearr, char *out){
 }
 
 int memload(){
-    char obs_path2[100];
-    char obs_path[100];
+    write(1, "load memory int or char or hex?(i, c, h): ", 43); // syscall lol. rdi, rax, rdx, rsi. if I am not mistake. 
+    int res = getchar();
+
+
+    while(getchar() != '\n'); 
+    if(res == 'i'){
+        for(int i=0; i<MEMSIZE-29; ++i){
+            printf("%#d, ", MEMORY[i]);
+        }
+        return 1;
+    }
+    else if(res == 'c'){
+        for(int i=0; i<MEMSIZE-29; ++i){
+            printf("%#c, ", MEMORY[i]);
+        }
+        return 1;
+    }
+    else if(res == 'h'){
+        for(int i=0; i<MEMSIZE-29; i++){
+            printf("%#x, ", MEMORY[i]);
+        }
+        return 1;
+    }
+
+    else{
+        return 0;
+    }
+}
+/* print disk.dat and return 0-false(somesing went wrong) 1-true(succses)*/
+int diskread(){
+    char* obs_path2 = amm_malloc(100);
+    char* obs_path = amm_malloc(100);
 
     getcwd(obs_path, 100);
     getcwd(obs_path2, 100);
@@ -117,6 +254,8 @@ int memload(){
     
     fclose(fl);
     chdir(obs_path2);   // come back
+    amm_free(obs_path2, 100);
+    amm_free(obs_path, 100);
     return 1;
 }
 void removen(char *str, int n){
@@ -144,15 +283,16 @@ void cut_after_substr(char *path, const char *substr) {
     	 
 int AmmIDE(){
     
-    char obs_path2[256];
-    char obs_path[256];
+    char* obs_path2 = (char*)amm_malloc(256);
+    char* obs_path = (char*)amm_malloc(256);
 
-    getcwd(obs_path2, sizeof(obs_path2));
-    getcwd(obs_path, sizeof(obs_path));
+    getcwd(obs_path2, 256);
+    getcwd(obs_path, 256);
 
     cut_after_substr(obs_path, "/AmmOS");
     chdir(obs_path);
 
+    
     while (1){
         char buff[30];
         const char *commads[] = {"push ", "free", "read"};
@@ -173,7 +313,7 @@ int AmmIDE(){
             removen(buff, 5);
             
             int num = atoi(buff);
-            char c = int_ascii(num);
+            char c = (char)num;
             fputc(c, fl);
             
             printf("AmmIDE: pushing '%c', (%d) to memory.\n", c, c);
@@ -197,7 +337,7 @@ int AmmIDE(){
                truncate(temp, size-1); 
         }
         else if (strncmp(commads[2], buff, 4) == 0){
-            short res = memload();
+            short res = diskread();
         }
 
         else if (strcmp("exit", buff) == 0){
@@ -211,7 +351,9 @@ int AmmIDE(){
         } 
 
                 
-    } 
+    }
+    amm_free(obs_path, 256);
+    amm_free(obs_path2, 256);
 }
 
 
@@ -241,11 +383,17 @@ int AmmSH_execute(const char *line, int col) {
     strncpy(buff, line, sizeof(buff));
 
     char *cmd = strtok(buff, " ");
-    char *arg = strtok(NULL, "");
+    char *arg = strtok(NULL, " ");
+    char *arg2 = strtok(NULL, "");
 
     if (!cmd) return 0;
 
-    if (strcmp(cmd, "print") == 0 && arg) {
+ 
+    else if (strcmp(cmd, "c") == 0 && arg) {
+        write(1, "\033[2J\033[H", 8);
+        return 1;
+    }
+    else if (strcmp(cmd, "print") == 0 && arg) {
         printf("%s", arg);
         return 1;
     }
@@ -283,6 +431,11 @@ int AmmSH_execute(const char *line, int col) {
     else if (strcmp(cmd, "neofetch") == 0) {
         return neofetch();
     }
+    // else if (strcmp(cmd, "malloc") == 0) {
+    //     int size = atoi(arg);
+    //     void* amm_malloc(size)
+    // }
+    
     else {
         printf("AmmOS: Bro what syntax did you write in '%d' line go fix or I will burn you PC\n", col);
         return 0;
@@ -303,6 +456,7 @@ void AmmSH(const char *file_to_inter) {
     int line_count = 0;
 
     while (fgets(buff, sizeof(buff), fl)) {
+        removetab(buff);
         col++;
     
         buff[strcspn(buff, "\n")] = 0;
@@ -384,8 +538,77 @@ void AmmSH(const char *file_to_inter) {
     fclose(fl);
     printf("\n");
 }
+/*endAmmSH*/
+
+/*We have memory and alloc memory so we need kernel panic if user will do segfalt in MEMORY >:)*/
+
+void KERNEL_PANIC(){
+    printf("\033[106m             Kernel panic!             \n");
+    printf("                                       \n");
+    printf("                /                      \n");
+    printf("          X    /                       \n");    
+    printf("              /                        \n");
+    printf("              \\                       \n");
+    printf("          X    \\                      \n");
+    printf("                \\                     \n");            
+    printf("                                       \n");
+    printf("Segfault core dumped. Please restart AmmOS\033[0m\n");
+    
+    fflush(stdout);
+    exit(1);
+}
 
 
+void sigsegv_handler(int signum) {
+    KERNEL_PANIC();
+}
 
 
+void kprint(char* text) {
+    puts(text);
+}
+
+
+char *catstr(char* s1, char* s2){
+    int len1 = 0, len2 = 0;
+
+    while(s1[len1]) len1++;
+    while(s1[len2]) len2++;
+
+    char *resultstr = amm_malloc(len1 + len2 + 1); // +1 for '\0'
+    int a = 0;
+
+    for(; a < len1; a++) resultstr[a] = s1[a];
+    a = 0; // xor a, a 
+    
+    for(; a < len2; a++) resultstr[a + a] = s2[a];
+    
+    return resultstr; // after use amm_free() btw
+}
+
+
+int ret_int(char* str){
+    return atoi(str);
+}
+
+
+// I made this bro for .asm
+void* funcs[] = {   // total 27 functions 
+    amm_malloc, amm_free, username, str_ascii,  
+        
+    ascii_int, int_ascii, ascii_str, diskread, 
+      
+    AmmIDE, removen, mkfile, mkdir_cmd, 
+        
+    cd_cmd, up_path, ls_cmd, sizeinfo,
+        
+    cat_cmd, neofetch, AmmSH, get_username,
+        
+    echo_cmd ,memload, rm_cmd, rf_cmd,
+    
+    kprint, catstr, ret_int, KERNEL_PANIC
+
+    
+    
+};
 
