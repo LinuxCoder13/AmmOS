@@ -243,7 +243,7 @@ int diskread(){
     chdir(obs_path);
 
     char buf[200];
-    sprintf(buf, "Memory/memory.dat");
+    sprintf(buf, "Memory/disk.dat");
 
     FILE *fl = fopen(buf, "rb");
     if (!fl) return 0;
@@ -304,7 +304,7 @@ int AmmIDE(){
 
         if (strncmp(commads[0], buff, 5) == 0){
             char buffer[200];
-            sprintf(buffer, "Memory/memory.dat");
+            sprintf(buffer, "Memory/disk.dat");
 
             FILE *fl = fopen(buffer, "ab");
             if(!fl){
@@ -321,7 +321,7 @@ int AmmIDE(){
         }
         else if (strncmp(commads[1], buff, 4) == 0){
             char temp[200];
-            sprintf(temp, "Memory/memory.dat");
+            sprintf(temp, "Memory/disk.dat");
 
             FILE *fl = fopen(temp, "rb");
 
