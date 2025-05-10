@@ -1,6 +1,6 @@
 											      
-AmmOS - is open sourse guest OS is made for experimental/educational purpose it's can be runed only in Linux(Debian, Ubuntu, ... WSL2, termux) (Some times in MacOS). for compile write in /opens folder ->
-(`gcc Ammshell.c Ammkernel.c AmmFS.c -o Ammshell`) and run in main folder (`./run`).
+AmmOS - is open sourse guest OS is made for experimental/educational purpose it's can be runed only in Linux(Debian, Ubuntu, ... WSL2, termux) (Some times in MacOS). for compile write in '.' folder ->
+(`./make.sh`) and run in main folder (`./run`).
 
 commands --->
 
@@ -32,6 +32,12 @@ commands --->
 12) neofetch - info about AmmOS
 
 13) getlogin - print currunt username
+
+14) rf [file_name] - remove file
+
+15) rm [dir_name] - remove dir and sub dirs and files in
+
+16) calc - calculator (wrote in asembly btw)
 
 ... SOON
  
