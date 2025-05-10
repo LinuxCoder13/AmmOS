@@ -1,10 +1,10 @@
 											      
-AmmOS - is open sourse guest OS is made for experimental/educational purpose it's can be runed only in Linux(Debian, Ubuntu, ... WSL2, termux) (Some times in MacOS). for compile write in '.' folder ->
+AmmOS - is open sourse guest OS(x86-64) is made for experimental/educational purpose it's can be runed only in Linux(Debian, Ubuntu, ... WSL2)  for compile write in '.' folder ->
 (`./make.sh`) and run in main folder (`./run`).
 
 commands --->
 
-1) c - is clearing screen like "clear" in bash BUT using ASCII to do it.
+1) c - is clearing screen like "clear" in bash BUT using \033 to do it.
 
 2) ex - to exit OS and go back to Linux or Windows if you use WSL2 lol ;)
 
