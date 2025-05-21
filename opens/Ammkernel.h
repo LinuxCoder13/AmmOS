@@ -2,7 +2,8 @@
 #define HELLOWORLD 1
 
 
-
+#define VGA_WIDTH 50
+#define VGA_HEIGHT 70
 #define MAX_PATH 256
 #define FS_ROOT "opens/user/main"
 #define MEMSIZE (8192 / 2)
@@ -11,12 +12,13 @@
 extern char path[MAX_PATH];
 extern char *MEMORY; // amm_malloc(), amm_free() 
 extern short bit_map[MEMSIZE];  // 1, 0
+extern char VGA[VGA_WIDTH][VGA_HEIGHT]; // 80x50
 
 extern void kprint(char* text);
 extern char* username();
 extern void str_ascii(char *str, int *arr);
 extern int ascii_int(char c);
-extern void int_ascii(int integer, char* buffer); 
+extern void int_ascii(long integer, char* buffer); 
 extern void ascii_str(int *arr, int sizearr, char *out);
 extern int diskread(); 
 extern int AmmIDE();
@@ -42,10 +44,14 @@ extern void KERNEL_PANIC();
 extern void sigsegv_handler(int signum);
 extern char *catstr(char* s1, char* s2);
 extern int ret_int(char* str);
+extern void vga_main();
+extern void vga_init();
+extern int ParseAndExecute(char *inst, int height, int width, char c);
 
 // It's end ... I wona Hardcore so I will continue write functions in .asm (./asm/lowlevel_Ammkernel.asm)
 
 extern void calc(void);
+extern void fib(void);
 
 extern void* funcs[];   // total 29 functions 
 

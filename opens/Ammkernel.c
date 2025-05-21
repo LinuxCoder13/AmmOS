@@ -14,7 +14,6 @@ kernel life (2025 - ...)*/
 #include <sys/mman.h>
 
 
-
 char *MEMORY; // amm_malloc(), amm_free() 
 short bit_map[MEMSIZE];  // 1, 0
 
@@ -75,54 +74,52 @@ void amm_free(void *ptr, int size) {
 void cut_after_substr(char *path, const char *substr);           
 
 char* username(){
-	char fpath[100];	
-	char fpath2[100];
+    char fpath[100];	
+    char fpath2[100];
 
-	getcwd(fpath, 100);
-	getcwd(fpath2, 100);
+    getcwd(fpath, 100);
+    getcwd(fpath2, 100);
 
-	cut_after_substr(fpath, "AmmOS/opens/user");
-	chdir(fpath);
+    cut_after_substr(fpath, "AmmOS/opens/user");
+    chdir(fpath);
 
-	char *username = (char* )amm_malloc(15);
+    char *username = (char*)amm_malloc(15);
+    username[0] = '\0';
 
-	FILE *fl = fopen("username.txt", "r");
-	if (fgets(username, 15, fl)) {
+    FILE *fl = fopen("username.txt", "r");
+    if (fl && fgets(username, 15, fl)) {
+        username[strcspn(username, "\n")] = '\0'; 
+    }
+    if (fl) fclose(fl);
+
+
+    if (username[0] == '\0' || strlen(username) < 2) {
+        printf("Hello, Welcome to AmmOS!\nPlease write your username to continue: ");
+        fgets(username, 15, stdin);
         username[strcspn(username, "\n")] = '\0';
-    }
 
-	
-	fclose(fl);
-	if(username[0] == '\0'){
-		printf("Hello Welcome to AmmOS!\nPlease write your username to continue: ");
-		fgets(username, 15, stdin);
-		username[strcspn(username, "\n")] = '\0';
-	
-		FILE *fl_w = fopen("username.txt", "w");
-		fprintf(fl_w, "%s\n", username);
-		fclose(fl_w);
-	}
-
-	chdir(fpath2); //  come back to FS
-	return username;
-}
-
-void removetab(char *str) { // ! thats not working !!!!
-    int i = 0;
-
-    while (str[i] == ' ' || str[i] == '\t') {
-        i++;
-    }
-
-    if (i > 0) {
-
-        int j = 0;
-        while (str[i]) {
-            str[j++] = str[i++];
+        FILE *fl_w = fopen("username.txt", "w");
+        if (fl_w) {
+            fprintf(fl_w, "%s\n", username);
+            fclose(fl_w);
         }
-        str[j] = '\0'; 
+    }
+
+    chdir(fpath2);
+    return username;
+}
+
+
+void removetab(char *str) {
+    int i = 0;
+    while (str[i] == ' ' || str[i] == '\t') i++; 
+    if (i > 0) {
+        int j = 0;
+        while (str[i]) str[j++] = str[i++];
+        str[j] = '\0';
     }
 }
+
 
 
 
@@ -162,7 +159,7 @@ int ascii_int(char c){
     return (int)c;
 }
 
-void int_ascii(int value, char* str) {
+void int_ascii(long value, char* str) {
     if (value == 0) {
         str[0] = '0';
         str[1] = '\0';
@@ -258,7 +255,7 @@ int diskread(){
     amm_free(obs_path, 100);
     return 1;
 }
-void removen(char *str, int n){
+inline void removen(char *str, int n){
     int len = strlen(str);
     if (n >= len){
         str[0] = '\0';
@@ -268,7 +265,7 @@ void removen(char *str, int n){
 }
 
 
-void cut_after_substr(char *path, const char *substr) {
+void cut_after_substr(char *path, const char *substr) { // bro! inline is a good item use it!
     char *pos = strstr(path, substr);
     if (pos) {
         pos += strlen(substr);
@@ -342,7 +339,9 @@ int AmmIDE(){
 
         else if (strcmp("exit", buff) == 0){
 	       chdir(obs_path2); // I alweys come back;
-           printf("\n"); 
+           printf("\n");
+           amm_free(obs_path, 256);
+           amm_free(obs_path2, 256);
            return 1;
         }
 
@@ -384,7 +383,6 @@ int AmmSH_execute(const char *line, int col) {
 
     char *cmd = strtok(buff, " ");
     char *arg = strtok(NULL, " ");
-    char *arg2 = strtok(NULL, "");
 
     if (!cmd) return 0;
 
@@ -456,6 +454,7 @@ void AmmSH(const char *file_to_inter) {
     int line_count = 0;
 
     while (fgets(buff, sizeof(buff), fl)) {
+
         removetab(buff);
         col++;
     
@@ -463,7 +462,8 @@ void AmmSH(const char *file_to_inter) {
     
         char line_copy[50];
         strncpy(line_copy, buff, sizeof(line_copy));
-    
+        // just a ...
+
         char *cmd = strtok(line_copy, " ");
         char *arg = strtok(NULL, "");
     
@@ -472,8 +472,9 @@ void AmmSH(const char *file_to_inter) {
         if (strcmp(cmd, "loop") == 0 && arg) {
             int loop_times = atoi(arg);
             line_count = 0;
-    
+            
             while (fgets(buff, sizeof(buff), fl)) {
+                removetab(buff);
                 buff[strcspn(buff, "\n")] = 0;
                 if (strcmp(buff, "endloop") == 0) break;
                 strncpy(lines[line_count++], buff, sizeof(buff));
@@ -497,6 +498,7 @@ void AmmSH(const char *file_to_inter) {
         
             // Читаем if-блок
             while (fgets(buff, sizeof(buff), fl)){
+                removetab(buff);
                 buff[strcspn(buff, "\n")] = 0;
                 if (strcmp(buff, "else") == 0) {
                     has_else = 1;
@@ -511,6 +513,7 @@ void AmmSH(const char *file_to_inter) {
             if (has_else) {
 
                 while (fgets(buff, sizeof(buff), fl)){
+                    removetab(buff);
                     buff[strcspn(buff, "\n")] = 0;
                     if (strcmp(buff, "endif") == 0) break;
                     strncpy(else_lines[else_count++], buff, sizeof(buff));
@@ -552,7 +555,7 @@ void KERNEL_PANIC(){
     printf("          X    \\                      \n");
     printf("                \\                     \n");            
     printf("                                       \n");
-    printf("Segfault core dumped. Please restart AmmOS\033[0m\n");
+    printf("Please restart AmmOS                   \033[0m\n");
     
     fflush(stdout);
     exit(1);
@@ -568,6 +571,12 @@ void kprint(char* text) {
     puts(text);
 }
 
+int ret_int(char* str){
+    return atoi(str);
+}
+
+
+// amm_string functions --->
 
 char *catstr(char* s1, char* s2){
     int len1 = 0, len2 = 0;
@@ -586,9 +595,13 @@ char *catstr(char* s1, char* s2){
     return resultstr; // after use amm_free() btw
 }
 
-
-int ret_int(char* str){
-    return atoi(str);
+void replace(char *str, char target, char value){ // не ну а че
+    for(int i=0; str[i] != '\0'; ++i){
+        if(str[i] == target){
+            str[i] = value;
+        }
+    }
+    return; 
 }
 
 

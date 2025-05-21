@@ -17,7 +17,7 @@ int main(void) {
 
     char *user = username();
 
-    while (1) {
+    for(;;) {   // I am old Unix man 
         char command[30];
 
         printf("[%s]AmmOS %s$: ", user, path);
@@ -99,6 +99,12 @@ int main(void) {
         else if(strcmp(command, "calc") == 0){
             calc();
             printf("\n"); 
+        }
+        else if(strcmp(command, "fib") == 0){
+            fib();
+        }
+        else if(strcmp(command, "gpu") == 0){
+            vga_main();
         }
         else {
             printf("AmmSh: command not found!\n");
