@@ -48,30 +48,45 @@ CLI commands --->
 
 ... SOON
  
-# AmmSH-scripts:
-AmmSH interpreter has basic commads ->
+# AmmSH-scripts
 
-1) if ... else ... endif - if can take the result of some operation ex.(if r test.txt) if "r test.txt" code doesnt return 1 it will skip till else-block, can't have nested if...else
-2) loop <index> ... endloop - doing some code <index> time can't have inside if...else
-3) if + Shell-commads
-4) one line commads ex.(go ..)
+AmmSH interpreter supports basic commands:
 
-Rulse:
-1) No variables
-2) to interpretate file white "AmmSH [file_name]"
-3) no nested if or loop
+1. `if ... else ... endif`  
+   Conditional execution based on the result of a command.  
+   Example: `if r test.txt` – if the command `r test.txt` doesn't return 1 (i.e., it succeeds), the `if` block is executed.  
+   - Cannot contain nested `if ... else` blocks.
 
-code example ->
-```
+2. `loop ... endloop`  
+   Repeats a block of code a specified number of times.  
+   - Cannot contain `if ... else` inside.
+
+3. `if` + shell commands  
+   Example: `if go ..`
+
+4. One-line commands  
+   Example: `go ..`
+
+---
+
+## Rules
+
+1. No variables allowed  
+2. Interpret script using: `AmmSH [file_name]`  
+3. No nested `if` or `loop` blocks allowed
+
+---
+
+## Code Example
+
+```ammsh
 if go ..
-	print I went 1 dir back!
-
-else 
-	print fail!
-
+    print I went 1 dir back!
+else
+    print fail!
 endif
 
 loop 10
-	neofetch
+    neofetch
 endloop
-```
+
