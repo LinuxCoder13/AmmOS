@@ -3,7 +3,7 @@
 #include <string.h>
 
 
-char VGA[VGA_WIDTH][VGA_HEIGHT];
+char VGA[VGA_HEIGHT][VGA_WIDTH];
 
 
 int ParseAndExecute(char *inst, int height, int width, char c){

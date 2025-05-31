@@ -12,7 +12,8 @@ kernel life (2025 - ...)*/
 #include "Ammkernel.h"
 #include <dirent.h>
 #include <sys/mman.h>
-
+#include <pthread.h>
+#include <time.h>
 
 char *MEMORY; // amm_malloc(), amm_free() 
 short bit_map[MEMSIZE];  // 1, 0
@@ -71,6 +72,10 @@ void amm_free(void *ptr, int size) {
     }
 }
 
+//void* 
+
+
+
 void cut_after_substr(char *path, const char *substr);           
 
 char* username(){
@@ -123,28 +128,32 @@ void removetab(char *str) {
 
 
 
-int get_username(){
-    char fpath[100];	
-	char fpath2[100];
+char* get_username() {
+    static char username[20]; 
+    char *fpath = amm_malloc(100);	
+    char *fpath2 = amm_malloc(100);
 
-	getcwd(fpath, 100);
-	getcwd(fpath2, 100);
+    getcwd(fpath, 100);
+    getcwd(fpath2, 100);
 
-	cut_after_substr(fpath, "AmmOS/opens/user");
-	chdir(fpath);
+    cut_after_substr(fpath, "AmmOS/opens/user");
+    chdir(fpath);
 
-	char username[20];
-
-	FILE *fl = fopen("username.txt", "r");
-	if (fgets(username, 20, fl)) {
+    FILE *fl = fopen("username.txt", "r");
+    if(fl == NULL){
+        return NULL;
+    }
+    if (fl && fgets(username, 20, fl)) {
         username[strcspn(username, "\n")] = 0;
     }
 
-    printf("%s\n", username); 
- 	
-	fclose(fl);
-
+    if (fl) fclose(fl);
+    chdir(fpath2);
+    amm_free(fpath, 100);
+    amm_free(fpath2, 100);
+    return username; 
 }
+
 
 void str_ascii(char *str, int *arr){
     int i=0;
@@ -200,29 +209,36 @@ void ascii_str(int *arr, int sizearr, char *out){
 }
 
 int memload(){
-    write(1, "load memory int or char or hex?(i, c, h): ", 43); // syscall lol. rdi, rax, rdx, rsi. if I am not mistake. 
+    write(1, "load memory int or char or hex or value?(i, c, h, v): ", 55); // syscall lol. rdi, rdx, rsi. if I am not mistake. 
     int res = getchar();
 
 
     while(getchar() != '\n'); 
     if(res == 'i'){
         for(int i=0; i<MEMSIZE-29; ++i){
-            printf("%#d, ", MEMORY[i]);
+            printf("%d, ", (unsigned char)MEMORY[i]);
         }
         return 1;
     }
     else if(res == 'c'){
         for(int i=0; i<MEMSIZE-29; ++i){
-            printf("%#c, ", MEMORY[i]);
+            printf("%c, ", (unsigned char)MEMORY[i]);
         }
         return 1;
     }
     else if(res == 'h'){
         for(int i=0; i<MEMSIZE-29; i++){
-            printf("%#x, ", MEMORY[i]);
+            printf("%#x, ", (unsigned char)MEMORY[i]);
         }
         return 1;
     }
+
+    else if (res == 'v') {
+        for (int i = 0; i < MEMSIZE - 3; i += 4) {
+            int val = *(int*)(MEMORY + i);
+            printf("[%04d] = %d\n", i, val);
+        }
+    }    
 
     else{
         return 0;
@@ -334,7 +350,7 @@ int AmmIDE(){
                truncate(temp, size-1); 
         }
         else if (strncmp(commads[2], buff, 4) == 0){
-            short res = diskread();
+            diskread();
         }
 
         else if (strcmp("exit", buff) == 0){
@@ -371,177 +387,6 @@ int neofetch(){
     return 1;
 }
 
-
-// this functions must for write AmmSH-scripts letsss go!
-// I didn't want write it in kernel but it's ok ...
-
-
-// 1 line commands
-int AmmSH_execute(const char *line, int col) {
-    char buff[50];
-    strncpy(buff, line, sizeof(buff));
-
-    char *cmd = strtok(buff, " ");
-    char *arg = strtok(NULL, " ");
-
-    if (!cmd) return 0;
-
- 
-    else if (strcmp(cmd, "c") == 0 && arg) {
-        write(1, "\033[2J\033[H", 8);
-        return 1;
-    }
-    else if (strcmp(cmd, "print") == 0 && arg) {
-        printf("%s", arg);
-        return 1;
-    }
-    else if(strcmp(cmd, "say") == 0 && arg){
-        echo_cmd(arg);
-    }
-    else if (strcmp(cmd, "AmmIDE") == 0) {
-        return AmmIDE();
-    }
-    else if (strcmp(cmd, "username") == 0) {
-        printf("%s", get_username());
-        return 1;
-    }
-    else if (strcmp(cmd, "mkdir") == 0 && arg) {
-        return mkdir_cmd(arg);
-    }
-    else if(strcmp(cmd, "touch") == 0 && arg){
-        return mkfile(arg);
-    }
-    else if (strcmp(cmd, "load") == 0) {
-        return memload();
-    }
-    else if (strcmp(cmd, "go") == 0 && arg) {
-        return cd_cmd(arg);
-    }
-    else if (strcmp(cmd, "sizeof") == 0 && arg) {
-        return sizeinfo(arg);
-    }
-    else if (strcmp(cmd, "ls") == 0) {
-        return ls_cmd();
-    }
-    else if (strcmp(cmd, "r") == 0 && arg) {
-        return cat_cmd(arg);
-    }
-    else if (strcmp(cmd, "neofetch") == 0) {
-        return neofetch();
-    }
-    // else if (strcmp(cmd, "malloc") == 0) {
-    //     int size = atoi(arg);
-    //     void* amm_malloc(size)
-    // }
-    
-    else {
-        printf("AmmOS: Bro what syntax did you write in '%d' line go fix or I will burn you PC\n", col);
-        return 0;
-    }
-}
-
-// here is basic commands for every programming lang
-void AmmSH(const char *file_to_inter) {
-    char buff[50];
-    FILE *fl = fopen(file_to_inter, "r");
-    if (!fl) {
-        printf("AmmOS: Cannot open file '%s'\n", file_to_inter);
-        return;
-    }
-
-    int col = 0;
-    char lines[30][50];
-    int line_count = 0;
-
-    while (fgets(buff, sizeof(buff), fl)) {
-
-        removetab(buff);
-        col++;
-    
-        buff[strcspn(buff, "\n")] = 0;
-    
-        char line_copy[50];
-        strncpy(line_copy, buff, sizeof(line_copy));
-        // just a ...
-
-        char *cmd = strtok(line_copy, " ");
-        char *arg = strtok(NULL, "");
-    
-        if (!cmd) continue;
-    
-        if (strcmp(cmd, "loop") == 0 && arg) {
-            int loop_times = atoi(arg);
-            line_count = 0;
-            
-            while (fgets(buff, sizeof(buff), fl)) {
-                removetab(buff);
-                buff[strcspn(buff, "\n")] = 0;
-                if (strcmp(buff, "endloop") == 0) break;
-                strncpy(lines[line_count++], buff, sizeof(buff));
-            }
-    
-            for (int l = 0; l < loop_times; ++l) {
-                for (int i = 0; i < line_count; ++i) {
-                    AmmSH_execute(lines[i], col);
-
-                }
-            }
-        }
-
-        else if (strcmp(cmd, "if") == 0 && arg) {
-            int lines_count = 0;
-            int condition_met = AmmSH_execute(arg, col);
-            
-            char if_lines[30][50];
-            char else_lines[30][50];
-            int has_else = 0;  // есть ли else ваще?
-        
-            // Читаем if-блок
-            while (fgets(buff, sizeof(buff), fl)){
-                removetab(buff);
-                buff[strcspn(buff, "\n")] = 0;
-                if (strcmp(buff, "else") == 0) {
-                    has_else = 1;
-                    break;
-                }
-                if (strcmp(buff, "endif") == 0) break;
-                strncpy(if_lines[lines_count++], buff, sizeof(buff));
-            }
-        
-            int else_count = 0;
-        
-            if (has_else) {
-
-                while (fgets(buff, sizeof(buff), fl)){
-                    removetab(buff);
-                    buff[strcspn(buff, "\n")] = 0;
-                    if (strcmp(buff, "endif") == 0) break;
-                    strncpy(else_lines[else_count++], buff, sizeof(buff));
-                }
-            }
-        
-            if (condition_met) {
-                for (int i = 0; i < lines_count; ++i) {
-                    AmmSH_execute(if_lines[i], col);
-                }
-            } else if (has_else) {
-                for (int i = 0; i < else_count; ++i) {
-                    AmmSH_execute(else_lines[i], col);
-                }
-            }
-        }
-        
-
-        else{    
-            AmmSH_execute(buff, col);
-        }
-            
-    }
-
-    fclose(fl);
-    printf("\n");
-}
-/*endAmmSH*/
 
 /*We have memory and alloc memory so we need kernel panic if user will do segfalt in MEMORY >:)*/
 
@@ -582,7 +427,7 @@ char *catstr(char* s1, char* s2){
     int len1 = 0, len2 = 0;
 
     while(s1[len1]) len1++;
-    while(s1[len2]) len2++;
+    while(s2[len2]) len2++;
 
     char *resultstr = amm_malloc(len1 + len2 + 1); // +1 for '\0'
     int a = 0;
@@ -605,8 +450,9 @@ void replace(char *str, char target, char value){ // не ну а че
 }
 
 
+
 // I made this bro for .asm
-void* funcs[] = {   // total 27 functions 
+void* funcs[] = {   // total 28 functions 
     amm_malloc, amm_free, username, str_ascii,  
         
     ascii_int, int_ascii, ascii_str, diskread, 
@@ -620,8 +466,6 @@ void* funcs[] = {   // total 27 functions
     echo_cmd ,memload, rm_cmd, rf_cmd,
     
     kprint, catstr, ret_int, KERNEL_PANIC
-
-    
     
 };
 

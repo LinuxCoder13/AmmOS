@@ -13,6 +13,7 @@ gcc -c opens/Ammkernel.c -o objfiles/Ammkernel.o
 gcc -c opens/Ammshell.c -o objfiles/Ammshell.o
 gcc -c opens/AmmFS.c -o objfiles/AmmFS.o
 gcc -c opens/Ammgpu.c -o objfiles/Ammgpu.o
+gcc -c opens/AmmSH.c -o objfiles/AmmSH.o
 
 # make OS
 gcc objfiles/Ammshell.o \
@@ -22,6 +23,7 @@ gcc objfiles/Ammshell.o \
  objfiles/api.o \
  objfiles/fib.o \
  objfiles/Ammgpu.o \
+ objfiles/AmmSH.o \
  -o opens/Ammshell -no-pie  # I did somesing
 
 # bash-script > Makefile

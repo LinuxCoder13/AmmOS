@@ -24,7 +24,8 @@ int up_path(){
           return 0;
      }
       else{
-          snprintf(path, MAX_PATH,"~%s", ospwd + strlen("/main"));
+          memset(path, 0, MAX_PATH); // очищаем буфер полностью
+          snprintf(path, MAX_PATH, "~%s", ospwd + strlen("/main"));
       }
       amm_free(mainpwd, 1024); // чють не забыл
       return 1;
@@ -34,7 +35,7 @@ int mkfile(char *filename){
    
    FILE *fl = fopen(filename, "w");
    if (fl == NULL){
-    perror("AmmSH\n");
+    perror("AmmSH");
     return 0;
     }
    fclose(fl);
@@ -53,7 +54,7 @@ int mkdir_cmd(char *dirname){
          return 0;
     }
     else{
-        perror("AmmSH\n");
+        perror("AmmSH");
         return 0;
     }
     return 1;
@@ -155,7 +156,7 @@ int echo_cmd(char *msg){
     return 1;
 }
 // <-|-_-|->
-// пора перестать быть вайбкодером. этап 1: говарить ии что его код говно что твой код натурал даже если он не работает
+
 int rm_cmd(char* dirname) {
     struct dirent *dir;
     struct stat st;
@@ -169,7 +170,7 @@ int rm_cmd(char* dirname) {
     }
 
     while ((dir = readdir(d)) != NULL) {
-        if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0)
+        if (dir->d_name[0] == '.')
             continue;
 
         snprintf(now_path, 469, "%s/%s", dirname, dir->d_name);

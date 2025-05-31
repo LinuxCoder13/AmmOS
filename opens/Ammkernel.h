@@ -1,6 +1,7 @@
-#ifndef HELLOWORLD
-#define HELLOWORLD 1
+#pragma ones // это база
 
+#include <stdint.h> // база
+#include <stddef.h>
 
 #define VGA_WIDTH 50
 #define VGA_HEIGHT 70
@@ -12,7 +13,16 @@
 extern char path[MAX_PATH];
 extern char *MEMORY; // amm_malloc(), amm_free() 
 extern short bit_map[MEMSIZE];  // 1, 0
-extern char VGA[VGA_WIDTH][VGA_HEIGHT]; // 80x50
+extern char VGA[VGA_HEIGHT][VGA_WIDTH]; // 80x50
+
+// lets do flags for AmmSh
+typedef enum{
+    SILENT = 1,    
+    NORMAL = 2    
+    // soon
+}AmmSHFlags;
+
+
 
 extern void kprint(char* text);
 extern char* username();
@@ -31,8 +41,10 @@ extern int ls_cmd();
 extern int sizeinfo(char *filename);
 extern int cat_cmd(char *filename);
 extern int neofetch();
-extern void AmmSH();
-extern int get_username();
+extern int AmmSH(const char *file_to_inter, AmmSHFlags);
+extern int AmmSH_execute(char *line, int *col);
+extern void removetab(char *str);
+extern char* get_username();
 extern int echo_cmd(char *msg);
 extern void* amm_malloc(int __size);
 extern void amm_free(void* ptr, int size);
@@ -53,6 +65,5 @@ extern int ParseAndExecute(char *inst, int height, int width, char c);
 extern void calc(void);
 extern void fib(void);
 
-extern void* funcs[];   // total 29 functions 
 
-#endif
+extern void* funcs[];   // total 29 functions 
