@@ -12,8 +12,9 @@ kernel life (2025 - ...)*/
 #include "Ammkernel.h"
 #include <dirent.h>
 #include <sys/mman.h>
-#include <pthread.h>
 #include <time.h>
+#include <pthread.h>
+#include <signal.h>
 
 char *MEMORY; // amm_malloc(), amm_free() 
 short bit_map[MEMSIZE];  // 1, 0
@@ -32,12 +33,12 @@ void amm_init(void) {
 }
 
 // I a sorry
-void *amm_malloc(int size) {
-    if (size <= 0) {
+void *amm_malloc(int __size) {
+    if (__size <= 0) {
         return NULL;
     }
 
-    int blocks_needed = (size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    int blocks_needed = (__size + BLOCK_SIZE - 1) / BLOCK_SIZE; // +1
     int consecutive = 0;
     int total_blocks = MEMSIZE / BLOCK_SIZE;
 
@@ -72,8 +73,73 @@ void amm_free(void *ptr, int size) {
     }
 }
 
-//void* 
+char* append(int *len, int *cap, char* oldarr, char value) {
+    if (*cap <= 0) *cap = 4;
 
+    if (oldarr == NULL) {
+        oldarr = amm_malloc(sizeof(char) * (*cap));
+    }
+
+    if (*len >= *cap) {
+        *cap *= 2;
+        char *newarr = amm_malloc(sizeof(char) * (*cap));
+        if (newarr == NULL) return oldarr;
+
+        for (int i = 0; i < *len; i++) {
+            newarr[i] = oldarr[i];
+        }
+
+        amm_free(oldarr, *len);  // исправлено
+        oldarr = newarr;
+    }
+
+    oldarr[*len] = value;
+    (*len)++;
+    return oldarr;
+}
+
+
+
+
+// HELLO WORLD
+void** TwoDappend(int *len, int *cap, void **arr, void* value) {
+    // if void **arr = NULL;
+    if (*cap == 0) {
+        *cap = 4;
+        arr = amm_malloc(*cap * sizeof(void*));
+        *len = 0;
+    }
+
+    
+    if (*len >= *cap) {
+        int new_cap = *cap * 2;
+        void **new_arr = amm_malloc(new_cap * sizeof(void*));
+
+    
+        for (int i = 0; i < *len; ++i) {
+            new_arr[i] = arr[i];
+        }
+
+        amm_free(arr, *cap * sizeof(void*));
+
+        arr = new_arr;
+        *cap = new_cap;
+    }
+
+    arr[*len] = value;
+    (*len)++;
+
+    return arr;
+}
+
+void TwoDfree(char **arr, int len) {
+    for (int i = 0; i < len; i++) {
+        if (arr[i]) {
+            amm_free(arr[i], strlen(arr[i]) + 1); // Освобождаем каждую строку
+        }
+    }
+    amm_free(arr, len * sizeof(char*)); // Освобождаем массив указателей. вот и все!
+}
 
 
 void cut_after_substr(char *path, const char *substr);           
@@ -95,8 +161,9 @@ char* username(){
     if (fl && fgets(username, 15, fl)) {
         username[strcspn(username, "\n")] = '\0'; 
     }
-    if (fl) fclose(fl);
-
+    
+    
+    if(fl) fclose(fl);
 
     if (username[0] == '\0' || strlen(username) < 2) {
         printf("Hello, Welcome to AmmOS!\nPlease write your username to continue: ");
@@ -128,7 +195,7 @@ void removetab(char *str) {
 
 
 
-char* get_username() {
+char* get_username(AmmSHFlags mode) {
     static char username[20]; 
     char *fpath = amm_malloc(100);	
     char *fpath2 = amm_malloc(100);
@@ -141,6 +208,7 @@ char* get_username() {
 
     FILE *fl = fopen("username.txt", "r");
     if(fl == NULL){
+        if(mode == 2) puts("Geting username failed!");
         return NULL;
     }
     if (fl && fgets(username, 20, fl)) {
@@ -208,12 +276,13 @@ void ascii_str(int *arr, int sizearr, char *out){
     out[sizearr] = '\0';
 }
 
-int memload(){
+int memload(AmmSHFlags mode){
     write(1, "load memory int or char or hex or value?(i, c, h, v): ", 55); // syscall lol. rdi, rdx, rsi. if I am not mistake. 
-    int res = getchar();
-
-
-    while(getchar() != '\n'); 
+    unsigned char res;
+    scanf("%c", &res);  // I am sorry
+     
+    while(getchar() != '\n');
+     
     if(res == 'i'){
         for(int i=0; i<MEMSIZE-29; ++i){
             printf("%d, ", (unsigned char)MEMORY[i]);
@@ -241,11 +310,13 @@ int memload(){
     }    
 
     else{
+        if(mode == 2)
+            puts("Abort");
         return 0;
     }
 }
 /* print disk.dat and return 0-false(somesing went wrong) 1-true(succses)*/
-int diskread(){
+int diskread(AmmSHFlags mode){
     char* obs_path2 = amm_malloc(100);
     char* obs_path = amm_malloc(100);
 
@@ -259,7 +330,11 @@ int diskread(){
     sprintf(buf, "Memory/disk.dat");
 
     FILE *fl = fopen(buf, "rb");
-    if (!fl) return 0;
+    if (!fl){
+      if (mode == 1) puts("Faild reading the disk");
+      return 0;
+    } 
+
     int ch;
     while ((ch = fgetc(fl)) != EOF)
         printf("%c", ch);
@@ -281,7 +356,7 @@ inline void removen(char *str, int n){
 }
 
 
-void cut_after_substr(char *path, const char *substr) { // bro! inline is a good item use it!
+void inline cut_after_substr(char *path, const char *substr) { // bro! inline is a good item use it!
     char *pos = strstr(path, substr);
     if (pos) {
         pos += strlen(substr);
@@ -294,7 +369,7 @@ void cut_after_substr(char *path, const char *substr) { // bro! inline is a good
 // now functions for os
 
     	 
-int AmmIDE(){
+int AmmIDE(AmmSHFlags mode){
     
     char* obs_path2 = (char*)amm_malloc(256);
     char* obs_path = (char*)amm_malloc(256);
@@ -305,8 +380,9 @@ int AmmIDE(){
     cut_after_substr(obs_path, "/AmmOS");
     chdir(obs_path);
 
-    
+start:   
     while (1){
+
         char buff[30];
         const char *commads[] = {"push ", "free", "read"};
 
@@ -321,12 +397,19 @@ int AmmIDE(){
 
             FILE *fl = fopen(buffer, "ab");
             if(!fl){
+                if(mode == 2) puts("Open disk fail!");
                 return 0;
             }
             removen(buff, 5);
             
             int num = atoi(buff);
-            char c = (char)num;
+            if(num > 256 || num < 0){
+                if(mode == 2){
+                    puts("Please enter value <0-256>");
+                    goto start;
+                }
+            }
+            unsigned char c = (char)num;
             fputc(c, fl);
             
             printf("AmmIDE: pushing '%c', (%d) to memory.\n", c, c);
@@ -339,6 +422,7 @@ int AmmIDE(){
             FILE *fl = fopen(temp, "rb");
 
             if(!fl){
+                if(mode == 2) puts("Open disk fail!");
                 return 0;
             }
 
@@ -350,7 +434,7 @@ int AmmIDE(){
                truncate(temp, size-1); 
         }
         else if (strncmp(commads[2], buff, 4) == 0){
-            diskread();
+            diskread(mode);
         }
 
         else if (strcmp("exit", buff) == 0){
@@ -362,7 +446,7 @@ int AmmIDE(){
         }
 
         else{
-            printf("AmmIDE: no command found!\n");
+            if(mode == 2) printf("AmmIDE: no command found!\n");
         } 
 
                 
@@ -375,14 +459,14 @@ int AmmIDE(){
 int neofetch(){
 
     printf("\033[1;33m        ==AmmOS==\033[0m\n\n");
-    printf("\033[1;37m       /\\\033[0m          \033[;31mKernel:\033[0m Ammkernel v0.6 \n");
-    printf("\033[1;37m      /  \\\033[0m         \033[;31mShell:\033[0m Ammshell v0.4 (not bash) \n");
+    printf("\033[1;37m       /\\\033[0m          \033[;31mKernel:\033[0m Ammkernel \n");
+    printf("\033[1;37m      /  \\\033[0m         \033[;31mShell:\033[0m AmmSH (not bash) \n");
     printf("\033[1;37m     /    \\\033[0m        \033[;31mVersion:\033[0m 0.8 \n");
     printf("\033[1;37m    /======\\\033[0m       \033[;31mFS:\033[0m AmmFS (calls Linux)\n");
-    printf("\033[1;37m   / Amm-OS \\\033[0m      \033[;31mMemory:\033[0m 10.2kb\n");
-    printf("\033[1;37m  /==========\\\033[0m     \033[;31mGPU:\033[0m Soon\n");
-    printf("\033[1;37m /    ____    \\\033[0m    \033[;31mRAM:\033[0m memory.dat\n");
-    printf("\033[1;37m/____/    \\____\\\033[0m    \n");	
+    printf("\033[1;37m   / Amm-OS \\\033[0m      \033[;31mMemory:\033[0m 27.8kb\n");
+    printf("\033[1;37m  /==========\\\033[0m     \033[;31mGPU:\033[0m Ammgpu (2d arr)\n");
+    printf("\033[1;37m /    ____    \\\033[0m    \033[;31mRAM:\033[0m disk.dat\n");
+    printf("\033[1;37m/____/    \\____\\\033[0m  \033[;32m Flags:\033[0m -n, -s, -b  \n");	
 
     return 1;
 }
@@ -423,22 +507,6 @@ int ret_int(char* str){
 
 // amm_string functions --->
 
-char *catstr(char* s1, char* s2){
-    int len1 = 0, len2 = 0;
-
-    while(s1[len1]) len1++;
-    while(s2[len2]) len2++;
-
-    char *resultstr = amm_malloc(len1 + len2 + 1); // +1 for '\0'
-    int a = 0;
-
-    for(; a < len1; a++) resultstr[a] = s1[a];
-    a = 0; // xor a, a 
-    
-    for(; a < len2; a++) resultstr[a + a] = s2[a];
-    
-    return resultstr; // after use amm_free() btw
-}
 
 void replace(char *str, char target, char value){ // не ну а че
     for(int i=0; str[i] != '\0'; ++i){
@@ -449,7 +517,16 @@ void replace(char *str, char target, char value){ // не ну а че
     return; 
 }
 
-
+char *catstr(char *s1, char *s2) {
+    int len1 = 0, len2 = 0;
+    while (s1[len1]) len1++;
+    while (s2[len2]) len2++;
+    char *res = amm_malloc(len1 + len2 + 1);
+    for (int i = 0; i < len1; i++) res[i] = s1[i];
+    for (int j = 0; j < len2; j++) res[len1 + j] = s2[j];
+    res[len1 + len2] = '\0';
+    return res;
+}
 
 // I made this bro for .asm
 void* funcs[] = {   // total 28 functions 
@@ -469,3 +546,55 @@ void* funcs[] = {   // total 28 functions
     
 };
 
+
+void TaskOn(const char *file_to_inter, AmmSHFlags mode){
+    AmmSH(file_to_inter, mode);
+}
+
+typedef struct {
+    void (*TaskOn)(const char *file_to_inter, AmmSHFlags mode); // pointer to function
+} AmmTask;
+
+
+int init_sys(void){
+    amm_init(); // init memory
+    signal(SIGSEGV, sigsegv_handler); // segfalt handler
+
+    chdir(FS_ROOT);
+    up_path(); 
+}
+
+
+
+void *cli(void* HelloWorld){
+    // cli
+    char *user = username();
+
+    for(;;) {   // I am old Unix man 
+     
+        char command[256];
+        printf("[%s]AmmOS %s$: ", user, path);
+
+        fgets(command, sizeof(command), stdin);
+        clean_line(command);
+
+        AmmSH_execute(command, NULL); // CLI mode
+        
+     
+    }
+}
+
+
+int main(void){     // finaly Ammkernel will be a program!
+    unsigned long t1;
+    init_sys();
+
+    pthread_create(&t1, NULL, cli, NULL);
+    
+
+
+
+    pthread_join(t1, NULL);
+
+    return 1;
+}

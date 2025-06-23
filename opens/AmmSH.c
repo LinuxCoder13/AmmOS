@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -16,11 +15,46 @@ void clean_line(char *line) {
     line[strcspn(line, "\n")] = 0;
 }
 
+int parseFlags(int argc, char **argv) {
+    int result = NORMAL; 
+
+    for (int i = 0; i < argc; ++i) {
+        if (strcmp(argv[i], "-s") == 0) {
+            result = SILENT;
+        } else if (strcmp(argv[i], "-n") == 0) {
+            result = NORMAL;
+        }else{
+            if(strcmp(argv[i], "-") == 0){
+                puts("\nAmmSH: Unknow flag use '-n' or '-s'");
+                return -1; // Неизвестный флаг
+            }
+        }
+    }
+    
+    return result;
+}
+
+
+int removeFlag(int argc, char **argv){  // double pointer :(
+    int j=0;
+
+    for(int i=0; i<argc; ++i){ // go thoght argv[0..30][0]
+        if(argv[i][0] == '-' && strlen(argv[i]) == 2){
+            if(argv[i][1] == 's' || argv[i][1] == 'n'){
+                continue;
+            }
+        }
+
+        argv[j++] = argv[i];
+    }
+    argv[j] = NULL; // '\0'
+    return j;
+}
 
 
 int AmmSH_execute(char *line, int *col) {
     char buff[100];
-    char argv[30][30];
+    char *argv[30];
     int argc = 0;
 
     strncpy(buff, line, sizeof(buff));
@@ -29,10 +63,13 @@ int AmmSH_execute(char *line, int *col) {
 
     char *token = strtok(NULL, " ");
     while (token && argc < 30) {    // parse all 
-        strncpy(argv[argc], token, 30);
+        argv[argc] = token;
         token = strtok(NULL, " ");
         argc++;
     }
+
+    int flag = parseFlags(argc, argv);
+    argc = removeFlag(argc, argv);
 
     // CLI
     if (strcmp(cmd, "c") == 0) {
@@ -45,16 +82,16 @@ int AmmSH_execute(char *line, int *col) {
     }
 
     else if (strcmp(cmd, "diskload") == 0) {
-        return diskread();
+        return diskread(flag);
     }
 
     else if (strcmp(cmd, "memload") == 0) {
-        return memload();
+        return memload(flag);
     }
 
     else if (strcmp(cmd, "AmmIDE") == 0) {
         printf("\033[2J\033[H");
-        return AmmIDE();
+        return AmmIDE(flag);
     }
 
     else if (strcmp(cmd, "mkdir") == 0 && argc > 0) {
@@ -65,21 +102,20 @@ int AmmSH_execute(char *line, int *col) {
     }
 
     else if (strcmp(cmd, "go") == 0 && argc > 0) {
-        cd_cmd(argv[0]);
+        cd_cmd(argv[0], flag);
         return 1;
     }
 
     else if (strcmp(cmd, "sizeof") == 0 && argc > 0) {
         for (int i = 0; i < argc; i++) {
-            sizeinfo(argv[i]);
+            sizeinfo(argv[i], flag);
             puts("\n");
         }
         return 1;
     }
 
     else if (strcmp(cmd, "ls") == 0) {
-        ls_cmd();
-        return 1;
+        return ls_cmd();
     }
 
     else if (strcmp(cmd, "touch") == 0 && argc > 0) {
@@ -98,16 +134,21 @@ int AmmSH_execute(char *line, int *col) {
 
     else if (strcmp(cmd, "r") == 0 && argc > 0) {
         for (int i = 0; i < argc; i++) {
-            if(cat_cmd(argv[i]) == 0){
+            if(cat_expand(argv[i], flag, cat_cmd, "FILE") == 0){
                 return 0;
             }
-            puts("");
+            puts("\n");
         }
         
+    }
+    else if(strncmp(cmd, ";", 1) == 0){
+        return 1; /* just skip new line's comment -> ; I am comment
+        but you cant write -> loop 10 ; Pizza is good! */ 
     }
 
     else if (strcmp(cmd, "neofetch") == 0) {
         neofetch();
+	return 1;
     }
 
     else if (strcmp(cmd, "AmmSH") == 0 && argc > 0 ) {
@@ -115,17 +156,30 @@ int AmmSH_execute(char *line, int *col) {
         int success = 1;
 
         for (int i = 0; i < argc; ++i) {
-            results[i] = AmmSH(argv[i]);
+            results[i] = AmmSH(argv[i], flag);
             if (results[i] != 1) {
                 printf("AmmSH: Error in script '%s'\n", argv[i]);
                 success = 0;
             }
         }
-
         return success;
     }
+    else if (strcmp(cmd, "sleep") == 0 && argc > 0){ // brooo this works really slow :(
+	int *nums = amm_malloc(argc);
+	
+	for(int i=0; i<argc; ++i){
+	    nums[i] = atoi(argv[i]);	
+	}
+
+	for(int i = 0; i<argc; ++i){
+	    sleep(nums[i]);
+	}
+	
+	amm_free(nums, argc);
+	return 1;
+    }
     else if (strcmp(cmd, "getlogin") == 0) {
-        volatile char* un = get_username();
+        volatile char* un = get_username(flag);
 
         if(un == NULL){
             return 0;
@@ -135,12 +189,15 @@ int AmmSH_execute(char *line, int *col) {
     }
 
     else if (strcmp(cmd, "say") == 0 && argc > 0) {
-        return echo_cmd(argv[0]);
+        for(int i=0; i<argc; ++i){    
+            echo_cmd(argv[i], col); // see this function in AmmFS.c 151 line 
+        }
+        return 1;
     }
 
     else if (strcmp(cmd, "rm") == 0 && argc > 0) {
         for (int i = 0; i < argc; i++) {
-            if(rm_cmd(argv[i]) == 0){
+            if(cat_expand(argv[i], flag, rm_cmd, "DIR") == 0){
                 return 0;
             }
         }
@@ -149,34 +206,42 @@ int AmmSH_execute(char *line, int *col) {
 
     else if (strcmp(cmd, "rf") == 0 && argc > 0) {
         for (int i = 0; i < argc; i++) {
-            if(rf_cmd(argv[i]) == 0){
+            if(cat_expand(argv[i], flag, rf_cmd, "FILE") == 0){
                 return 0;
             }
         }
         return 1;
     }
 
-    else if(strcmp(cmd, "if") == 0 || strcmp(cmd, "else") == 0 || strcmp(cmd, "endif") == 0 || strcmp(cmd, "loop") == 0 || strcmp(cmd, "endloop") == 0)
+    else if(strcmp(cmd, "if") == 0 || strcmp(cmd, "else") == 0 || strcmp(cmd, "endif") == 0 || strcmp(cmd, "loop") == 0 || strcmp(cmd, "endloop") ==0 || strncmp(cmd, "i=", 2) == 0)
         return 1; // just do nothing :)
 
+    
     else if (strcmp(cmd, "calc") == 0) {
         calc();
         printf("\n");
+	return 1;
     }
 
     else if (strcmp(cmd, "fib") == 0) {
         fib();
+	return 1;
     }
 
     else if (strcmp(cmd, "gpu") == 0) {
         vga_main();
+	return 1;
     }
+    // +thr block
+    else if (strcmp(cmd, "+thr") == 0){
+	// so we need to start call function AmmSH(argv[i], mode); // but we need to work it in fone mode, so we will use pthread();
 
+    }
     else {
         if(col == NULL) // for CLI error
             printf("AmmSH: command not found!\n");
         else
-            printf("AmmSH: command not found in '%d' line!\n", *col); // for file
+            printf("AmmSH: command '%s' not found in '%d' line!\n", cmd, *col); // for file
     }
 
     return 0;
@@ -196,26 +261,37 @@ int AmmSH(const char *file_to_inter, AmmSHFlags mode) {
     int col = 0;
     char lines[30][128];
     int line_count = 0;
-
+    int when_to_break;
+    
     while (fgets(buff, sizeof(buff), fl)) {
         clean_line(buff);
 
         if (strlen(buff) == 0)
             continue;
 
-        char line_copy[128];
-        strncpy(line_copy, buff, sizeof(line_copy));
+	char line_copy[128];
+	strncpy(line_copy, buff, sizeof(line_copy));
 
         char *cmd = strtok(line_copy, " ");
         char *arg = strtok(NULL, "");
 
         if (!cmd) continue;
 
+
+        if (strncmp(buff, "i=", 2) == 0){
+            removen(buff, 2);
+            when_to_break = atoi(buff);
+            buff[0] = '\0'; // I did somesing
+        } 
+
+
+        
+        line_count = 0; // index of loop. To print index use '^' char
         // === LOOP ===
         if (strcmp(cmd, "loop") == 0 && arg) {
+            int infinity_loop = strcmp(arg, "inf") == 0; // hello C99
             int loop_times = atoi(arg);
-            line_count = 0;
-            int found_end = 0;
+            int found_end = 0; 
 
             while (fgets(buff, sizeof(buff), fl)) {
                 clean_line(buff);
@@ -223,22 +299,58 @@ int AmmSH(const char *file_to_inter, AmmSHFlags mode) {
                     found_end = 1;
                     break;
                 }
+
+                // sorry for ctrl + c, ctrl + v
+                if (strncmp(buff, "i=", 2) == 0){
+                    removen(buff, 2);
+                    when_to_break = atoi(buff);
+                    buff[0] = '\0'; // I did somesing
+                } 
+                
+
                 if (line_count < 30)
                     strncpy(lines[line_count++], buff, sizeof(lines[0]));
             }
 
             if (!found_end) {
-                if(mode != 1){
+                if(mode == NORMAL){
                     printf("AmmSH: Missing 'endloop'\n");
                     return 0;
                 }
+                return 0;
             }
 
+            int iter = 0;
+            col = 0;
+            // inf loop
+            if(infinity_loop){ // broooo why srtcmp retunrn 0? why not 1?
+                while (1){
+                    for (int i = 0; i < line_count; ++i) {
+                        if(col == when_to_break){
+                            goto end;
+                        } 
+                        AmmSH_execute(lines[i], &col);
+                    }
+                    iter++; // becouse inf loop :)
+                    col++;
+                }
+                col = 0;
+            }
+
+            // basic loop
             for (int l = 0; l < loop_times; ++l) {
                 for (int i = 0; i < line_count; ++i) {
+                    if(loop_times == when_to_break){
+                        goto end;
+                    } 
                     AmmSH_execute(lines[i], &col);
                 }
+                iter++;
+                col++;
             }
+            col = 0;
+            
+
         }
 
         // === IF/ELSE/ENDIF ===
@@ -270,10 +382,11 @@ int AmmSH(const char *file_to_inter, AmmSHFlags mode) {
             }
 
             if (!found_end) {
-                if(mode != 1){
+                if(mode == NORMAL){
                     printf("AmmSH: Missing 'endif'\n");
                     return 0;
                 }
+                return 0;
             }
 
             char (*chosen)[128] = condition_met ? if_lines : else_lines;
@@ -286,11 +399,17 @@ int AmmSH(const char *file_to_inter, AmmSHFlags mode) {
 
         // === Просто команда ===
         else {
-            volatile int res = AmmSH_execute(buff, &col); // if -O2
+            AmmSH_execute(buff, &col); // 
         }
+end:
+        ;
     }
+
+
 
     fclose(fl);
     printf("\n");
     return 1;
 }
+
+

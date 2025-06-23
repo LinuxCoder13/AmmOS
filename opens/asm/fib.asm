@@ -98,6 +98,8 @@ fib:
     pop r10
     pop r9
     pop r8
+
+    mov rax, 1
     ret
 
 

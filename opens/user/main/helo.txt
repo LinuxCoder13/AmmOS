@@ -1,0 +1,4 @@
+loop inf
+    i=3
+    say helooooo^
+endloop

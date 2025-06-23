@@ -87,7 +87,7 @@ calc:
     ; rbx = atoi(num1)
     ; r8 = atoi(num2)
 
-
+    mov rax, 1 ; не ну а че
     ret
 
 
