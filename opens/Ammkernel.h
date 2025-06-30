@@ -1,3 +1,38 @@
+/*
+ * DISCLAIMER
+ *
+ * AmmOS is an educational and experimental operating system.
+ * It is provided as-is, with no guarantees that it will function
+ * correctly or safely in any environment.
+ *
+ * The author is not responsible for any damage, data loss, or
+ * other issues that may result from using or modifying this software.
+ *
+ * Use at your own risk.
+ */
+
+/*
+ * AmmOS - Minimal Modular Operating System
+ * Copyright (C) 2025 Ammar Najafli
+ *
+ * This file is part of AmmOS.
+ *
+ * AmmOS is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * AmmOS is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with AmmOS.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+
+
 #pragma ones // это база
 
 #include <stdint.h> // база
@@ -7,23 +42,64 @@
 #define VGA_HEIGHT 90
 #define MAX_PATH 256
 #define FS_ROOT "opens/user/main"
-#define MEMSIZE (8192 / 2)
+
+#define MEMSIZE (256 * 1024)  // = 262144 байта
 #define BLOCK_SIZE 64 // 8 byte memory
+#define BLOCK_COUNT (MEMSIZE / BLOCK_SIZE)
+
+#define MAX_DEMONS 12
+
+#define MAX_VARS 70
 
 extern char path[MAX_PATH];
-extern char *MEMORY; // amm_malloc(), amm_free() 
+extern unsigned char *MEMORY; // amm_malloc(), amm_free() 
 extern short bit_map[MEMSIZE];  // 1, 0
+
 extern char VGA[VGA_HEIGHT][VGA_WIDTH]; // 80x50
 
 // lets do flags for AmmSh
 typedef enum{
     SILENT = 1,   // all functions in AmmOS will not tell about erorr or warnings 
-    NORMAL = 2    // clasic mode
+    NORMAL = 2,    // clasic mode
+    BACKGROUND = 3
     // soon
 }AmmSHFlags;
 
 typedef int (*AmmOpFunc)(char *path, AmmSHFlags mode);
 
+typedef unsigned short Ammpid_t;
+
+typedef struct {
+    int pid;      // real pid in linux
+    Ammpid_t apid;  // local pid 
+    char name[40];  // demon name
+    char execfilename[50];  // demon which execute file
+    char comment[80];
+
+} AmmDemon;
+
+typedef struct Var {
+    enum {INT = 1, CHAR = 2, STRING = 3} type;
+    union { 
+        int i;
+        char c; 
+        char s[256]; 
+    };
+    char varname[16];   // please don't make long name!
+} Var;
+
+
+// go to .bss
+extern AmmDemon demons[MAX_DEMONS];
+extern int Ammdemon_count;
+
+extern void infodemon(AmmDemon *demon);
+extern void startdemon(AmmDemon *demon);
+extern int AmmINI(char* file_to_inter, AmmDemon *demon);
+extern int killdemon(AmmDemon *demon);
+extern void savedemon(AmmDemon *demon);
+
+extern int bitmapload(AmmSHFlags mode);
 
 extern void kprint(char* text);
 extern char* username();
@@ -42,11 +118,17 @@ extern int ls_cmd();
 extern int sizeinfo(char *filename, AmmSHFlags mode);
 extern int cat_cmd(char *filename, AmmSHFlags mode);
 extern int neofetch();
+
 extern int AmmSH(const char *file_to_inter, AmmSHFlags);
 extern int AmmSH_execute(char *line, int *col);
+extern int printf_var(Var var, int type);
+extern int variable_initialization(char* name, char* value, int type);
+extern Var vars[MAX_VARS];
+extern int var_count;
+
 extern void removetab(char *str);
 extern char* get_username(AmmSHFlags mode);
-extern int echo_cmd(char *msg, int *index);
+extern int echo_cmd(char *msg, int *loop_index, Var* var, int type);
 
 
 // Memory-alloc funcs
@@ -70,7 +152,9 @@ extern char* get_folder_from_path(char* path);
 extern char* cut_suffix(char* path);
 extern int endsWith(char* folder, char* sufix);
 char* strlchr(const char* s, char c);
-char **ls_conter(char* dire, int* out_i, int mode, char* type);
+char **ls_conter(char* dire, int* out_i, AmmSHFlags mode, char* type);
+char* grep_cmd(char* flag, char* dir, char* filename, char* _s, AmmSHFlags mode);
+
 
 // VGA
 extern void vga_main();

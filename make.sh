@@ -13,15 +13,17 @@ gcc -c opens/Ammkernel.c -o objfiles/Ammkernel.o
 gcc -c opens/AmmFS.c -o objfiles/AmmFS.o
 gcc -c opens/Ammgpu.c -o objfiles/Ammgpu.o
 gcc -c opens/AmmSH.c -o objfiles/AmmSH.o
+gcc -c opens/Ammsystemd.c -o objfiles/Ammsystemd.o
 
 # make OS
-gcc objfiles/Ammkernel.o \
+gcc -fsanitize=address -g -O2 objfiles/Ammkernel.o \
  objfiles/AmmFS.o \
  objfiles/calc.o \
  objfiles/api.o \
  objfiles/fib.o \
  objfiles/Ammgpu.o \
  objfiles/AmmSH.o \
+ objfiles/Ammsystemd.o \
  -o opens/AmmOS -no-pie  # I did somesing
 
 # bash-script > Makefile

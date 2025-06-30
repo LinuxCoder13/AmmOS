@@ -1,5 +1,25 @@
-; lowlevel_Ammkernel.asm is Nasm + Ammkernel.c functions. I really dont want to write
-; my own asembly. So lowlevel_Ammkernel.asm its high level of Nasm in AmmOS 2025 - ... 
+; AmmOS - Minimal Modular Operating System
+; Copyright (C) 2025 Ammar Najafli
+;
+; This file is part of AmmOS.
+;
+; AmmOS is free software: you can redistribute it and/or modify
+; it under the terms of the GNU General Public License as published by
+; the Free Software Foundation, either version 3 of the License, or
+; (at your option) any later version.
+;
+; AmmOS is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU General Public License for more details.
+;
+; You should have received a copy of the GNU General Public License
+; along with AmmOS.  If not, see <https://www.gnu.org/licenses/>.
+;
+
+
+; I really dont want to write
+; my own asembly. So lowlevel_Ammkernel its high level of Nasm in AmmOS 2025 - ... 
 
 ; we need only funcs[] and funcs in. also see funcs in ../Ammkernel.c
 ; #include "../Ammkernel.h" <----- Ammkernel.c + AmmFS.c

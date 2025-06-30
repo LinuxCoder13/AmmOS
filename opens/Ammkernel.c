@@ -1,6 +1,42 @@
+/*
+ * DISCLAIMER
+ *
+ * AmmOS is an educational and experimental operating system.
+ * It is provided as-is, with no guarantees that it will function
+ * correctly or safely in any environment.
+ *
+ * The author is not responsible for any damage, data loss, or
+ * other issues that may result from using or modifying this software.
+ *
+ * Use at your own risk.
+ */
+
+
+
 /* Ammkernel - is main function-database it send tecnology to AmmFS, Ammshell, ect.
 the prototype of functions, variables(extern), makros are in Ammkernel.h 
-kernel life (2025 - ...)*/
+microkernel life (2025 - ...)*/
+
+/*
+ * AmmOS - Minimal Modular Operating System
+ * Copyright (C) 2025 Ammar Najafli
+ *
+ * This file is part of AmmOS.
+ *
+ * AmmOS is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * AmmOS is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with AmmOS.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,7 +52,7 @@ kernel life (2025 - ...)*/
 #include <pthread.h>
 #include <signal.h>
 
-char *MEMORY; // amm_malloc(), amm_free() 
+unsigned char *MEMORY; // amm_malloc(), amm_free() 
 short bit_map[MEMSIZE];  // 1, 0
 
 // functions that will help write kernel
@@ -32,7 +68,7 @@ void amm_init(void) {
     memset(bit_map, 0, sizeof(bit_map));  // битмап должен быть достаточно большим !.!.!.!
 }
 
-// I a sorry
+// I a sorry for this shit
 void *amm_malloc(int __size) {
     if (__size <= 0) {
         return NULL;
@@ -64,7 +100,7 @@ void amm_free(void *ptr, int size) {
     if (size <= 0) return;
     if (!ptr) return;
 
-    int start = ((char *)ptr - MEMORY) / BLOCK_SIZE;
+    int start = ((unsigned char *)ptr - MEMORY) / BLOCK_SIZE;
     int blocks = (size + BLOCK_SIZE - 1) / BLOCK_SIZE;
     int total_blocks = MEMSIZE / BLOCK_SIZE;
 
@@ -103,42 +139,46 @@ char* append(int *len, int *cap, char* oldarr, char value) {
 
 // HELLO WORLD
 void** TwoDappend(int *len, int *cap, void **arr, void* value) {
-    // if void **arr = NULL;
-    if (*cap == 0) {
+    if (*cap == 0) {                 
         *cap = 4;
         arr = amm_malloc(*cap * sizeof(void*));
-        *len = 0;
+        *len = 0;                 
     }
 
-    
     if (*len >= *cap) {
         int new_cap = *cap * 2;
         void **new_arr = amm_malloc(new_cap * sizeof(void*));
-
-    
+        if (new_arr == NULL) printf("IDI NAHUY\n");
         for (int i = 0; i < *len; ++i) {
             new_arr[i] = arr[i];
         }
-
         amm_free(arr, *cap * sizeof(void*));
-
         arr = new_arr;
         *cap = new_cap;
     }
 
-    arr[*len] = value;
+    int sz = strlen((char*)value) + 1;
+
+    char* strcopy = amm_malloc(sz);
+    if(strcopy == NULL) printf("IDI NAHUY\n");
+    memcpy(strcopy, value, sz);
+
+    arr[*len] = strcopy;
     (*len)++;
 
     return arr;
 }
 
+
 void TwoDfree(char **arr, int len) {
     for (int i = 0; i < len; i++) {
         if (arr[i]) {
-            amm_free(arr[i], strlen(arr[i]) + 1); // Освобождаем каждую строку
+            // Используем реальную длину строки +1 для нуль-терминатора
+            int str_len = strlen(arr[i]) + 1;
+            amm_free(arr[i], str_len);
         }
     }
-    amm_free(arr, len * sizeof(char*)); // Освобождаем массив указателей. вот и все!
+    amm_free(arr, len * sizeof(char*));
 }
 
 
@@ -284,26 +324,26 @@ int memload(AmmSHFlags mode){
     while(getchar() != '\n');
      
     if(res == 'i'){
-        for(int i=0; i<MEMSIZE-29; ++i){
+        for(int i=0; i<BLOCK_COUNT-29; ++i){
             printf("%d, ", (unsigned char)MEMORY[i]);
         }
         return 1;
     }
     else if(res == 'c'){
-        for(int i=0; i<MEMSIZE-29; ++i){
+        for(int i=0; i<BLOCK_COUNT-29; ++i){
             printf("%c, ", (unsigned char)MEMORY[i]);
         }
         return 1;
     }
     else if(res == 'h'){
-        for(int i=0; i<MEMSIZE-29; i++){
+        for(int i=0; i<BLOCK_COUNT-29; i++){
             printf("%#x, ", (unsigned char)MEMORY[i]);
         }
         return 1;
     }
 
     else if (res == 'v') {
-        for (int i = 0; i < MEMSIZE - 3; i += 4) {
+        for (int i = 0; i < BLOCK_COUNT - 3; i += 4) {
             int val = *(int*)(MEMORY + i);
             printf("[%04d] = %d\n", i, val);
         }
@@ -315,6 +355,15 @@ int memload(AmmSHFlags mode){
         return 0;
     }
 }
+
+int bitmapload(AmmSHFlags mode){
+    for(int i=0; i<BLOCK_COUNT; ++i){
+        printf("%hd, ", bit_map[i]);
+    }
+    printf("\n");
+    return 1;
+}
+
 /* print disk.dat and return 0-false(somesing went wrong) 1-true(succses)*/
 int diskread(AmmSHFlags mode){
     char* obs_path2 = amm_malloc(100);
@@ -547,21 +596,35 @@ void* funcs[] = {   // total 28 functions
 };
 
 
-void TaskOn(const char *file_to_inter, AmmSHFlags mode){
-    AmmSH(file_to_inter, mode);
-}
 
-typedef struct {
-    void (*TaskOn)(const char *file_to_inter, AmmSHFlags mode); // pointer to function
-} AmmTask;
 
 
 int init_sys(void){
     amm_init(); // init memory
     signal(SIGSEGV, sigsegv_handler); // segfalt handler
+    
+    // init main pid
+    demons[0].pid=getpid();
+    demons[0].apid=Ammdemon_count;
+    strncpy(demons[0].name, "MAIN", 5); // +1 for '\0'
+    strcpy(demons[0].execfilename, __FILE__);
+    strcpy(demons[0].comment, "It's the main proses in AmmOS");
+    Ammdemon_count++;
+
+    // мини инитилизация для дебага
+    for(int i=1; i<MAX_DEMONS; i++){
+        demons[i].apid = i;
+        demons[i].name[0] = '\0';
+        demons[i].execfilename[0] = '\0';
+        demons[i].comment[0] = '\0';
+    }
+
+
+    //signal(SIGCHLD, SIG_IGN); // автоматом "забывает" умерших детей
 
     chdir(FS_ROOT);
     up_path(); 
+    return 1;
 }
 
 
@@ -585,16 +648,12 @@ void *cli(void* HelloWorld){
 }
 
 
-int main(void){     // finaly Ammkernel will be a program!
-    unsigned long t1;
+int main() {
     init_sys();
-
-    pthread_create(&t1, NULL, cli, NULL);
+    pthread_t cli_thread;
+    pthread_create(&cli_thread, NULL, cli, NULL);
     
-
-
-
-    pthread_join(t1, NULL);
-
-    return 1;
+    // Главный поток ждет завершения (или работает вечно)
+    while (1) sleep(1);
+    // Либо: pthread_join(cli_thread, NULL);
 }

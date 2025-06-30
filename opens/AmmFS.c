@@ -1,3 +1,38 @@
+/*
+ * DISCLAIMER
+ *
+ * AmmOS is an educational and experimental operating system.
+ * It is provided as-is, with no guarantees that it will function
+ * correctly or safely in any environment.
+ *
+ * The author is not responsible for any damage, data loss, or
+ * other issues that may result from using or modifying this software.
+ *
+ * Use at your own risk.
+ */
+
+
+/*
+ * AmmOS - Minimal Modular Operating System
+ * Copyright (C) 2025 Ammar Najafli
+ *
+ * This file is part of AmmOS.
+ *
+ * AmmOS is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * AmmOS is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with AmmOS.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -98,6 +133,7 @@ int ls_cmd(){
      printf("\n");
      closedir(d);
      return 1;
+
 }
 
 char* strlchr(const char* s, char c) {
@@ -113,7 +149,7 @@ char* strlchr(const char* s, char c) {
 int endsWith(char* folder, char* sufix){
     if(folder == NULL || sufix == NULL) return 0;
     int folderlen = strlen(folder), sufixlen = strlen(sufix);
-    return (folderlen < sufixlen) ? 0 : (strcmp(folder + folderlen - sufixlen, sufix) == 0);
+    return (folderlen < sufixlen) ? 0 : (strcmp(folder + folderlen - sufixlen, sufix) == 0); // okay?
 }
 
 // search '.' and cut arter it and return suffix name
@@ -156,7 +192,7 @@ char *get_folder_from_path(char *path) {
     return folder;
 }
 
-char **ls_conter(char* dire, int* out_i, int mode, char* type){         // build-in function
+char **ls_conter(char* dire, int* out_i, AmmSHFlags mode, char* type){         // build-in function
     DIR *d = opendir(dire);
     if(d == NULL){
         if(mode == NORMAL) perror("opendir failed");
@@ -180,15 +216,16 @@ char **ls_conter(char* dire, int* out_i, int mode, char* type){         // build
         snprintf(fullpath, sizeof(fullpath), "%s/%s", dire, dir->d_name);
         if (stat(fullpath, &st) != 0) continue;
 
+
         if ((strcmp(type, "FILE") == 0 && !S_ISREG(st.st_mode)) ||
-            (strcmp(type, "DIR") == 0 && !S_ISDIR(st.st_mode))) {
+            (strcmp(type, "DIR") == 0 && !S_ISDIR(st.st_mode)))  {
             continue;
         }
 
         int namelen = strlen(dir->d_name) + 1;       // +1 for '\0'
         char* dirname = (char*)amm_malloc(namelen);  
         strncpy(dirname, dir->d_name, namelen);
-
+        
         res = (char**)TwoDappend(&len, &cap, (void**)res, dirname);
         (*out_i)++; // count number of valid entries
   
@@ -200,11 +237,70 @@ char **ls_conter(char* dire, int* out_i, int mode, char* type){         // build
     return res;
 }
 
+// version 2.0 
+char* grep_cmd(char* flag, char* dir, char* filename, char* _s, AmmSHFlags mode) {
+    DIR *d = opendir(dir);
+    if (!d) return NULL;
+
+    struct dirent *de;
+    struct stat st;
+    char fullpath[512];
+
+    while ((de = readdir(d))) {
+        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
+
+        snprintf(fullpath, sizeof(fullpath), "%s/%s", dir, de->d_name);
+        if (stat(fullpath, &st) == -1) continue;
+
+        if (S_ISDIR(st.st_mode)) {
+            char *res = grep_cmd(flag, fullpath, filename, _s, mode);
+            if (res) {
+                closedir(d);
+                return res;
+            }
+        } else if (S_ISREG(st.st_mode)) {
+            if (strcmp(de->d_name, filename) == 0) {
+                if (strcmp(flag, "-r-file") == 0) {
+                    closedir(d);
+                    char *copy = amm_malloc(strlen(fullpath) + 1);
+                    strcpy(copy, fullpath);
+                    return copy;
+                }
+
+                else if (strcmp(flag, "-r-str") == 0) {
+                    FILE *fp = fopen(fullpath, "r");
+                    if (!fp) continue;
+
+                    char line[512];
+                    int found = 0;
+                    while (fgets(line, sizeof(line), fp)) {
+                        if (strstr(line, _s)) {
+                            found = 1;
+                            break;
+                        }
+                    }
+                    fclose(fp);
+
+                    if (found) {
+                        closedir(d);
+                        char *copy = amm_malloc(strlen(fullpath) + 1);
+                        strcpy(copy, fullpath);
+                        return copy;
+                    }
+                }
+            }
+        }
+    }
+    closedir(d);
+    return NULL;
+}
+
+
 int sizeinfo(char *filename, AmmSHFlags mode){
     struct stat info;  // вся инфа о filename
 
     if(stat(filename, &info) == 0){
-        printf("f size: %ld bytes\n", info.st_size);
+        fprintf(stdout, "f size: %ld bytes\n", info.st_size);
     }
     else{
         if(mode == NORMAL) printf("AmmSH: No such file or dir.\n");
@@ -215,7 +311,8 @@ int sizeinfo(char *filename, AmmSHFlags mode){
 
 int cat_cmd(char *filename, AmmSHFlags mode){
     struct stat info;
-    
+    char *tmp = amm_malloc(1024);    //  надеюсь хватит
+
     if(stat(filename, &info) != 0){
        if (mode == NORMAL) printf("AmmSH: I didn't find '%s', no such file\n", filename);
        return 0;
@@ -232,7 +329,7 @@ int cat_cmd(char *filename, AmmSHFlags mode){
                 if (mode == NORMAL) perror("AmmSH");
                 return 0;
             }
-            char *tmp = amm_malloc(1024);    //  надеюсь хватит
+            
             if (!tmp){
                 if (mode == NORMAL) perror("Amm_malloc failed");
                 fclose(fl);
@@ -242,9 +339,9 @@ int cat_cmd(char *filename, AmmSHFlags mode){
                 printf("%s", tmp);
 
             }
-
-         amm_free(tmp, 1024); // мусор.  
+  
          fclose(fl);
+         amm_free(tmp, 1024);
    }
    return 1;
 }
@@ -289,35 +386,56 @@ int cat_expand(char *path, AmmSHFlags flag, AmmOpFunc func, char* type) {
     // 7) free all becouse we don't need this info eny more
     TwoDfree(files, count);
     amm_free(folder, strlen(folder) + 1);
+    if (suffix && suffix[0] != '\0') amm_free(suffix, strlen(suffix) + 1);
     return 1;
 }
 
-
-
-
-
-int echo_cmd(char *msg, int *loop_index){
+// бедная функция :(
+// похуй моя архитиктура мои правила и костыли :(
+int echo_cmd(char *msg, int *loop_index, Var* var, int type){
 
 
     if(msg == NULL){
         return 0;
     }
 
-    if(loop_index == NULL){ // cli mode
+    if(!loop_index || !var){ // cli mode
         printf("%s\n", msg);
         return 1;
-    } 
-    
-    for (int i = 0; msg[i]; i++){ // bro want's to use index of loop? ok.
-        if (msg[i] == '^') {
-            printf("%d", *loop_index);
-            continue;
+    }
+    if(loop_index && !var){
+        for (int i = 0; msg[i]; i++){ // bro want's to use index of loop? ok.
+            if (msg[i] == '^') {
+                printf("%d", *loop_index);
+                continue;
+            }
+            putchar(msg[i]);
         }
-        putchar(msg[i]);
+        putchar('\n');
+        return 1;
     }
 
-    putchar('\n');
-    return 1;
+    else if(var && !loop_index){
+        printf_var(*var, type);
+        return 1;
+    }
+
+    else{
+        for (int i = 0; msg[i]; i++){ // bro want's to use index of loop? ok.
+            if (msg[i] == '^') {
+                printf("%d", *loop_index);
+                continue;
+            }
+            else if(msg[i] == '$'){ // for print var in AmmSH-script
+                printf_var(*var, type);
+                continue;
+            }
+            putchar(msg[i]);
+        }
+        putchar('\n');
+        return 1;
+    } 
+    return 0;
 }
 // <-|-_-|->
 
@@ -365,6 +483,7 @@ int rf_cmd(char* filename, AmmSHFlags mode){
         if (mode == NORMAL) fprintf(stderr, "AmmSH: No such fl or dir\n");
         return 0;
     }
+    return (mode == BACKGROUND) ? 1 : 0;
 }
 
 

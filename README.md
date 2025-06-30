@@ -2,51 +2,143 @@
 AmmOS - is open sourse guest OS(x86-64) is made for experimental/educational purpose it's can be runed only in Linux(Debian, Ubuntu, ... WSL2)  for compile write in '.' folder ->
 (`./make.sh`) and run in main folder (`./run`).
 
-CLI commands --->
+AmmOS is licensed under the GNU General Public License v3.0 or later. See LICENSE for details.
 
-1) c - is clearing screen like "clear" in bash BUT using \033 to do it.
+# AmmOS CLI Commands
 
-2) ex - to exit OS and go back to Linux or Windows if you use WSL2 
+> This is the list of available shell commands in AmmOS.
 
-3) sizeof [file name] - it shows how many bytes do your file use (also work with binary file)
+---
 
-4) AmmIDE - it's byte code editor commads ->
-	|push <num 0-256> - it's pushing to stack(in disk.dat) the ascii ex.(push 65 -> 'A')
-	|free - pop last char in stack(in disk.dat)
-	|read - load stack(disk.dat) in that ascii chars
+## ⚙️ System
 
-5) diskload - same as read but you must write not in AmmIDE
+### `c`
+Clear screen using `\033` escape sequences.
 
-6) mkdir [dir_name] - make dir in '.' folder no use (system("mkdir"))
+### `ex`
+Exit AmmOS and return to Linux/Windows (WSL2 or host shell).
 
-7) ls - you now ;) no use (system("ls"))
+### `sleep [seconds ...]`
+Pause execution for the given seconds. Supports multiple delays.
 
-8) nano [file_name] - I used system("nano")
+### `getlogin`
+Print current username.
 
-9) go [dir_name] - chdir(dir_name)
+### `neofetch`
+Display system information about AmmOS.
 
-10) r [file_name] - it's like cat 
+---
 
-11) touch [file_name] - you now ;)
+## 📂 File & Directory
 
-12) neofetch - info about AmmOS
+### `sizeof [filename]`
+Print file size in bytes (supports binary files).
 
-13) getlogin - print currunt username
+### `mkdir [dirname]`
+Create a directory in the current folder.
 
-14) rf [file_name] - remove file
+### `ls`
+List directory contents (same as `ls`).
 
-15) rm [dir_name] - remove dir and sub dirs and files in
+### `touch [filename]`
+Create an empty file.
 
-16) calc - calculator (wrote in asembly btw)
+### `nano [filename]`
+Open a file using system `nano` editor.
 
-17) fib - fibonacci numbers (wrote in asembly for high seed)
+### `go [dirname]`
+Change current directory (`chdir`).
 
-18) gpu - it's VGA[50][70]
-    | mov [WIDTH] [HEIGHT] [CHAR]
+### `r [filename]`
+Print contents of a file (like `cat`).
 
-19) memload - loads all memory which was amm_malloced
+### `rf [filename]`
+Remove file.
 
-... SOON
+### `rm [dirname]`
+Remove a directory and all its contents recursively.
+
+---
+
+## 🔍 Search
+
+### `agrep -r-file <filename> [& start_dir]`
+Recursively search for a file starting from directory.
+
+### `agrep -r-str <filename> <pattern> [& start_dir]`
+Search for a string pattern inside a file recursively.
+
+---
+
+## 🧮 ASM Programs
+
+### `calc`
+Simple calculator (written in assembly).
+
+### `fib`
+Print Fibonacci numbers (assembly, supports high values).
+
+---
+
+## 🧱 AmmIDE (Bytecode Editor)
+
+### `AmmIDE`
+Enter the bytecode editor.
+
+Inside AmmIDE:
+- `push <0-256>` – Push an ASCII value to the stack (`disk.dat`).
+- `free` – Pop the last ASCII char from stack.
+- `read` – Load and print stack as ASCII chars.
+
+---
+
+## 📦 Disk & Memory
+
+### `diskload`
+Load the stack from disk (`disk.dat`) and print it (outside AmmIDE).
+
+### `memload`
+Print memory allocated using `amm_malloc()`.
+
+---
+
+## 🖥️ VGA
+
+### `gpu`
+Enter VGA text drawing mode.
+
+Example inside:
+- `mov [WIDTH] [HEIGHT] [CHAR]` – Draw character at given coords.
+
+---
+
+## 👻 Daemons (`asystemd`)
+
+### `asystemd start <file.ammservice>`
+Start a background service defined by `.ammservice` file.
+
+### `asystemd kill <apid>`
+Kill a daemon by its assigned `apid`.
+
+### `asystemd list`
+List all running demons with their metadata.
+
+---
+
+## 📢 Output
+
+### `say [text ...]`
+Print each argument as a new line (custom `echo`).
+
+---
+
+## 🛠 Coming soon...
+More tools, shell commands and services will be added in future versions of AmmOS.
+
+> 🛠 AmmOS is self-documented through its codebase.  
+> For available CLI commands, see `AmmSH_execute()` in `AmmSH.c`.
+
+
  
 # AmmSH-scripts
 
