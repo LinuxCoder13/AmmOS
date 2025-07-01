@@ -1,8 +1,13 @@
 											      
-AmmOS - is open sourse guest OS(x86-64) is made for experimental/educational purpose it's can be runed only in Linux(Debian, Ubuntu, ... WSL2)  for compile write in '.' folder ->
+AmmOS — is free software and pseudo-OS (x86-64), licensed under GNU GPL v3.
+It's an experimental modular shell-driven system built for fun, learning, and low-level control.
+AmmOS is made for experimental/educational purpose it's can be runed only in Linux(Debian, Ubuntu, ... WSL2)  for compile write in '.' folder ->
 (`./make.sh`) and run in main folder (`./run`).
 
 AmmOS is licensed under the GNU General Public License v3.0 or later. See LICENSE for details.
+
+# Dependencies
+`nasm` && `gcc`
 
 # AmmOS CLI Commands
 
