@@ -51,20 +51,27 @@ microkernel life (2025 - ...)*/
 #include <time.h>
 #include <pthread.h>
 #include <signal.h>
+    
 
-unsigned char *MEMORY; // amm_malloc(), amm_free() 
-short bit_map[MEMSIZE];  // 1, 0
+#ifndef MAP_ANONYMOUS
+#define MAP_ANONYMOUS 0x20
+#endif
+
+
+unsigned char *MEMORY; // amm_malloc(), amm_free()
+// go to .bss btw
+uint8_t bit_map[BLOCK_COUNT];  // 1, 0
 
 // functions that will help write kernel
 
 void amm_init(void) {
-    MEMORY = mmap(NULL, MEMSIZE*2, PROT_READ | PROT_WRITE,
-                  MAP_PRIVATE | 0x20, -1, 0);
+    MEMORY = mmap(NULL, MEMSIZE, PROT_READ | PROT_WRITE,
+                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (MEMORY == MAP_FAILED) {
         perror("mmap failed");
         exit(1);
     }
-    memset(MEMORY, 0, MEMSIZE*2);  // очищаем ВСе а не только MEMSIZE
+    memset(MEMORY, 0, MEMSIZE);  // очищаем ВСе а не только MEMSIZE
     memset(bit_map, 0, sizeof(bit_map));  // битмап должен быть достаточно большим !.!.!.!
 }
 
@@ -577,6 +584,20 @@ char *catstr(char *s1, char *s2) {
     return res;
 }
 
+
+char* astrdup(char* p){
+    int len = strlen(p);
+    char* new = (char*)amm_malloc(len+1); // + 1 for '\0'
+
+    int i=0;
+    while(i<len){
+        new[i] = p[i];
+        i++;
+    }
+    new[len] = '\0';
+    return new;
+}
+
 // I made this bro for .asm
 void* funcs[] = {   // total 28 functions 
     amm_malloc, amm_free, username, str_ascii,  
@@ -620,9 +641,11 @@ int init_sys(void){
     }
 
 
-    //signal(SIGCHLD, SIG_IGN); // автоматом "забывает" умерших детей
+    signal(SIGCHLD, SIG_IGN); // автоматом "забывает" умерших детей
 
     chdir(FS_ROOT);
+
+
     up_path(); 
     return 1;
 }
@@ -633,6 +656,7 @@ void *cli(void* HelloWorld){
     // cli
     char *user = username();
 
+
     for(;;) {   // I am old Unix man 
      
         char command[256];
@@ -641,7 +665,7 @@ void *cli(void* HelloWorld){
         fgets(command, sizeof(command), stdin);
         clean_line(command);
 
-        AmmSH_execute(command, NULL); // CLI mode
+        AmmSH_execute(command);
         
      
     }

@@ -53,7 +53,7 @@
 
 extern char path[MAX_PATH];
 extern unsigned char *MEMORY; // amm_malloc(), amm_free() 
-extern short bit_map[MEMSIZE];  // 1, 0
+extern uint8_t bit_map[BLOCK_COUNT];  // 1, 0
 
 extern char VGA[VGA_HEIGHT][VGA_WIDTH]; // 80x50
 
@@ -80,10 +80,12 @@ typedef struct {
 
 typedef struct Var {
     enum {INT = 1, CHAR = 2, STRING = 3} type;
+    // enum{its_i = 1, its_c = 2, its_s = 3 };
+    
     union { 
         int i;
         char c; 
-        char s[256]; 
+        char s[26]; 
     };
     char varname[16];   // please don't make long name!
 } Var;
@@ -120,24 +122,29 @@ extern int cat_cmd(char *filename, AmmSHFlags mode);
 extern int neofetch();
 
 extern int AmmSH(const char *file_to_inter, AmmSHFlags);
-extern int AmmSH_execute(char *line, int *col);
+extern int AmmSH_execute(char *line);
 extern int printf_var(Var var, int type);
 extern int variable_initialization(char* name, char* value, int type);
+
+
+extern int preprocessor(int argc, char **argv); // IMPORTANT FUCTION!!
 extern Var vars[MAX_VARS];
 extern int var_count;
+extern void vars_dump();
 
 extern void removetab(char *str);
 extern char* get_username(AmmSHFlags mode);
-extern int echo_cmd(char *msg, int *loop_index, Var* var, int type);
+extern int echo_cmd(char *msg);
 
 
 // Memory-alloc funcs
 extern void* amm_malloc(int __size);
 extern void amm_free(void* ptr, int size);
 extern void amm_init();
-void** TwoDappend(int *len, int *cap, void **arr, void* value);
-void TwoDfree(char **arr, int len);
-char* append(int *len, int *cap, char* oldarr, char value);
+extern void** TwoDappend(int *len, int *cap, void **arr, void* value);
+extern void TwoDfree(char **arr, int len);
+extern char* append(int *len, int *cap, char* oldarr, char value);
+extern char* astrdup(char* p);
 
 extern int memload(AmmSHFlags mode);
 extern int rm_cmd(char* dirname, AmmSHFlags mode);
@@ -151,9 +158,9 @@ extern int cat_expand(char *path, AmmSHFlags flag, AmmOpFunc func, char* type);
 extern char* get_folder_from_path(char* path);
 extern char* cut_suffix(char* path);
 extern int endsWith(char* folder, char* sufix);
-char* strlchr(const char* s, char c);
-char **ls_conter(char* dire, int* out_i, AmmSHFlags mode, char* type);
-char* grep_cmd(char* flag, char* dir, char* filename, char* _s, AmmSHFlags mode);
+extern char* strlchr(const char* s, char c);
+extern char **ls_conter(char* dire, int* out_i, AmmSHFlags mode, char* type);
+extern char* grep_cmd(char* flag, char* dir, char* filename, char* _s, AmmSHFlags mode);
 
 
 // VGA
@@ -165,6 +172,9 @@ extern int ParseAndExecute(char *inst, int height, int width, char c);
 
 extern void calc(void);
 extern void fib(void);
+extern void factoral(void);
+// non glibc function
+extern int astrcmp(char* _s1, char* _s2);
 
 
 extern void* funcs[];   // total 29 functions 

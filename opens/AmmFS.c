@@ -54,7 +54,7 @@ int up_path(){
 
      char *ospwd = strstr(mainpwd, "/main");
       if (ospwd == NULL){
-          printf("AmmSH: permision denied. You can't eascape AmmFS\n");
+          printf("AmmOS: FATAL: check the struct of progect -> AmmOS/opens/user/main\n");
           amm_free(mainpwd, 1024);
           return 0;
      }
@@ -116,29 +116,42 @@ int cd_cmd(char *dirname, AmmSHFlags mode){
         return 1;
  }
 
-int ls_cmd(){
-     DIR *d = opendir(".");
-     struct dirent *dir;
-     struct stat st;
-     printf("\n");
+int ls_cmd() {
+    DIR *d = opendir(".");
+    struct dirent *dir;
+    struct stat st;
+    char fpath[512];  // полный путь для stat
 
-     while((dir = readdir(d)) != NULL){
-        if(dir->d_name[0] == '.') continue;
-        if(S_ISDIR(st.st_mode)) printf("%s  \n", dir->d_name);
-        else{
+    if (!d) {
+        perror("opendir");
+        return 0;
+    }
+
+    printf("\n");
+    while ((dir = readdir(d)) != NULL) {
+        if (dir->d_name[0] == '.') continue;
+
+        snprintf(fpath, sizeof(fpath), "./%s", dir->d_name);  // построим путь
+        if (stat(fpath, &st) == -1) {
+            perror("stat");
+            continue;
+        }
+
+        if (S_ISDIR(st.st_mode))
+            printf("%s/   ", dir->d_name);
+        else
             printf("%s  ", dir->d_name);
-     }
-        
-     }
-     printf("\n");
-     closedir(d);
-     return 1;
+    }
 
+    printf("\n");
+    closedir(d);
+    return 1;
 }
+
 
 char* strlchr(const char* s, char c) {
     char* last = NULL;
-    while (*s) {
+    while (*s != '\0') {
         if (*s == c) last = (char*)s;
         s++;
 
@@ -149,7 +162,7 @@ char* strlchr(const char* s, char c) {
 int endsWith(char* folder, char* sufix){
     if(folder == NULL || sufix == NULL) return 0;
     int folderlen = strlen(folder), sufixlen = strlen(sufix);
-    return (folderlen < sufixlen) ? 0 : (strcmp(folder + folderlen - sufixlen, sufix) == 0); // okay?
+    return (folderlen < sufixlen) ? 0 : (astrcmp(folder + folderlen - sufixlen, sufix) == 0); // okay?
 }
 
 // search '.' and cut arter it and return suffix name
@@ -217,8 +230,8 @@ char **ls_conter(char* dire, int* out_i, AmmSHFlags mode, char* type){         /
         if (stat(fullpath, &st) != 0) continue;
 
 
-        if ((strcmp(type, "FILE") == 0 && !S_ISREG(st.st_mode)) ||
-            (strcmp(type, "DIR") == 0 && !S_ISDIR(st.st_mode)))  {
+        if ((astrcmp(type, "FILE") == 0 && !S_ISREG(st.st_mode)) ||
+            (astrcmp(type, "DIR") == 0 && !S_ISDIR(st.st_mode)))  {
             continue;
         }
 
@@ -247,7 +260,7 @@ char* grep_cmd(char* flag, char* dir, char* filename, char* _s, AmmSHFlags mode)
     char fullpath[512];
 
     while ((de = readdir(d))) {
-        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
+        if (astrcmp(de->d_name, ".") == 0 || astrcmp(de->d_name, "..") == 0) continue;
 
         snprintf(fullpath, sizeof(fullpath), "%s/%s", dir, de->d_name);
         if (stat(fullpath, &st) == -1) continue;
@@ -259,15 +272,15 @@ char* grep_cmd(char* flag, char* dir, char* filename, char* _s, AmmSHFlags mode)
                 return res;
             }
         } else if (S_ISREG(st.st_mode)) {
-            if (strcmp(de->d_name, filename) == 0) {
-                if (strcmp(flag, "-r-file") == 0) {
+            if (astrcmp(de->d_name, filename) == 0) {
+                if (astrcmp(flag, "-r-file") == 0) {
                     closedir(d);
                     char *copy = amm_malloc(strlen(fullpath) + 1);
                     strcpy(copy, fullpath);
                     return copy;
                 }
 
-                else if (strcmp(flag, "-r-str") == 0) {
+                else if (astrcmp(flag, "-r-str") == 0) {
                     FILE *fp = fopen(fullpath, "r");
                     if (!fp) continue;
 
@@ -390,52 +403,14 @@ int cat_expand(char *path, AmmSHFlags flag, AmmOpFunc func, char* type) {
     return 1;
 }
 
-// бедная функция :(
-// похуй моя архитиктура мои правила и костыли :(
-int echo_cmd(char *msg, int *loop_index, Var* var, int type){
 
+int echo_cmd(char *msg){
 
-    if(msg == NULL){
-        return 0;
+    for(int i=0; msg[i] != 0; ++i){
+        putchar(msg[i]);
     }
 
-    if(!loop_index || !var){ // cli mode
-        printf("%s\n", msg);
-        return 1;
-    }
-    if(loop_index && !var){
-        for (int i = 0; msg[i]; i++){ // bro want's to use index of loop? ok.
-            if (msg[i] == '^') {
-                printf("%d", *loop_index);
-                continue;
-            }
-            putchar(msg[i]);
-        }
-        putchar('\n');
-        return 1;
-    }
-
-    else if(var && !loop_index){
-        printf_var(*var, type);
-        return 1;
-    }
-
-    else{
-        for (int i = 0; msg[i]; i++){ // bro want's to use index of loop? ok.
-            if (msg[i] == '^') {
-                printf("%d", *loop_index);
-                continue;
-            }
-            else if(msg[i] == '$'){ // for print var in AmmSH-script
-                printf_var(*var, type);
-                continue;
-            }
-            putchar(msg[i]);
-        }
-        putchar('\n');
-        return 1;
-    } 
-    return 0;
+    return 1;
 }
 // <-|-_-|->
 

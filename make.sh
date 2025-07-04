@@ -7,6 +7,8 @@ mkdir -p objfiles
 nasm -f elf64 opens/asm/api.asm -o objfiles/api.o
 nasm -f elf64 opens/asm/calc.asm -o objfiles/calc.o
 nasm -f elf64 opens/asm/fib.asm -o objfiles/fib.o
+nasm -f elf64 opens/asm/factoral.asm -o objfiles/factoral.o
+nasm -f elf64 opens/asm/strcmp.asm -o objfiles/strcmp.o
 
 # compile all .c to objects for creating 1 full binary ;)
 gcc -c opens/Ammkernel.c -o objfiles/Ammkernel.o
@@ -24,6 +26,8 @@ gcc -fsanitize=address -g -O2 objfiles/Ammkernel.o \
  objfiles/Ammgpu.o \
  objfiles/AmmSH.o \
  objfiles/Ammsystemd.o \
+ objfiles/factoral.o \
+ objfiles/strcmp.o \
  -o opens/AmmOS -no-pie  # I did somesing
 
 # bash-script > Makefile

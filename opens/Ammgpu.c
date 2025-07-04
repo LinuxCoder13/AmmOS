@@ -42,7 +42,7 @@ char VGA[VGA_HEIGHT][VGA_WIDTH];
 
 
 int ParseAndExecute(char *inst, int height, int width, char c){
-    if(strcmp(inst, "mov") == 0){
+    if(astrcmp(inst, "mov") == 0){
         VGA[height][width] = c;  // lol
         return 1;
     }
