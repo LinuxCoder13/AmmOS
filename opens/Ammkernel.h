@@ -43,19 +43,19 @@
 #define MAX_PATH 256
 #define FS_ROOT "opens/user/main"
 
-#define MEMSIZE (256 * 1024)  // = 262144 байта
-#define BLOCK_SIZE 64 // 8 byte memory
+#define MEMSIZE (256 * 1024)        
+#define BLOCK_SIZE 64                
 #define BLOCK_COUNT (MEMSIZE / BLOCK_SIZE)
 
-#define MAX_DEMONS 12
+static uint8_t bit_map[BLOCK_COUNT]; // amm_malloc(), amm_free()
+static uint8_t *MEMORY;  // 1, 0
 
+#define MAX_DEMONS 12
 #define MAX_VARS 70
 
 extern char path[MAX_PATH];
-extern unsigned char *MEMORY; // amm_malloc(), amm_free() 
-extern uint8_t bit_map[BLOCK_COUNT];  // 1, 0
 
-extern char VGA[VGA_HEIGHT][VGA_WIDTH]; // 80x50
+extern char VGA[VGA_HEIGHT][VGA_WIDTH]; // 90x70
 
 // lets do flags for AmmSh
 typedef enum{
@@ -80,8 +80,6 @@ typedef struct {
 
 typedef struct Var {
     enum {INT = 1, CHAR = 2, STRING = 3} type;
-    // enum{its_i = 1, its_c = 2, its_s = 3 };
-    
     union { 
         int i;
         char c; 
@@ -95,6 +93,20 @@ typedef struct Var {
 extern AmmDemon demons[MAX_DEMONS];
 extern int Ammdemon_count;
 
+#define MAX_ENTRIES 100
+#define MAX_VALUE_LEN 64
+
+typedef struct {
+    char key;
+    char value[MAX_VALUE_LEN];
+} DictEntry;
+
+extern DictEntry aunicode[MAX_ENTRIES];
+extern int aunicode_count;
+
+extern void dict_set(char key, char* value);
+extern char* dict_get(char key);
+
 extern void infodemon(AmmDemon *demon);
 extern void startdemon(AmmDemon *demon);
 extern int AmmINI(char* file_to_inter, AmmDemon *demon);
@@ -103,12 +115,10 @@ extern void savedemon(AmmDemon *demon);
 
 extern int bitmapload(AmmSHFlags mode);
 
-extern void kprint(char* text);
 extern char* username();
 extern void str_ascii(char *str, int *arr);
 extern int ascii_int(char c);
 extern void int_ascii(long integer, char* buffer); 
-extern void ascii_str(int *arr, int sizearr, char *out);
 extern int diskread(AmmSHFlags mode); 
 extern int AmmIDE(AmmSHFlags mode);
 extern void removen(char *str, int n);
@@ -152,7 +162,6 @@ extern int rf_cmd(char* filename, AmmSHFlags mode);
 extern void KERNEL_PANIC();
 extern void sigsegv_handler(int signum);
 extern char *catstr(char* s1, char* s2);
-extern int ret_int(char* str);
 extern void clean_line(char *line);
 extern int cat_expand(char *path, AmmSHFlags flag, AmmOpFunc func, char* type);
 extern char* get_folder_from_path(char* path);
@@ -173,8 +182,8 @@ extern int ParseAndExecute(char *inst, int height, int width, char c);
 extern void calc(void);
 extern void fib(void);
 extern void factoral(void);
-// non glibc function
+// non glibc function (made for high speed)
 extern int astrcmp(char* _s1, char* _s2);
 
 
-extern void* funcs[];   // total 29 functions 
+extern void* funcs[];   // total 28 functions 

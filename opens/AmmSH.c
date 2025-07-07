@@ -84,7 +84,7 @@ int removeFlag(int argc, char **argv){  // double pointer :(
             }
         }
 
-        argv[++j] = argv[i];
+        argv[j++] = argv[i];
     }
     argv[j] = NULL; // '\0'
     return j;
@@ -104,7 +104,7 @@ int variable_initialization(char* name, char* value, int type){
     // we must not use swich-case
     if(type == INT) tmp->i = atoi(value);
     else if(type == CHAR) tmp->c = value[0];
-    else if(type == STRING) strncpy(tmp->s, value, 256);
+    else if(type == STRING) strncpy(tmp->s, value, 26);
 
     var_count++;
     return 1;
@@ -138,7 +138,7 @@ int reval_var(char* name, char* value, char* operator){
                     tmp->i = anoter_var_value;
                 else if (type == INT) tmp->i = atoi(value);
                 else if (type == CHAR) tmp->c = value[0];
-                else if (type == STRING) strncpy(tmp->s, value, 256);
+                else if (type == STRING) strncpy(tmp->s, value, 26);
             }
 
             else if (astrcmp(operator, "+=") == 0) {
@@ -392,11 +392,12 @@ int AmmSH_execute(char *line) {
     }
 
     else if (astrcmp(cmd, "nano") == 0 && argc > 0) {
-        char tmp[64];
-        snprintf(tmp, sizeof(tmp), "nano %s", argv[0]);
-        system(tmp);
+        char *args[3] = {"nano", argv[0], NULL};  // 2 argc + '\0'
+        execve("/bin/nano", args, NULL);
+        perror("execve");
         return 1;
     }
+
 
     else if (astrcmp(cmd, "r") == 0 && argc > 0) {
         for (int i = 0; i < argc; i++) {
@@ -414,7 +415,7 @@ int AmmSH_execute(char *line) {
     }
 
     else if (astrcmp(cmd, "AmmSH") == 0 && argc > 0 ) {
-        char *results = amm_malloc(sizeof(int) * argc); // useing as int!
+        char *results = amm_malloc(sizeof(int) * argc); // useing as decimal!
         int success = 1;
 
         for (int i = 0; i < argc; ++i) {
@@ -429,7 +430,7 @@ int AmmSH_execute(char *line) {
     }
 
     else if (astrcmp(cmd, "sleep") == 0 && argc > 0){ // brooo this works really slow :(
-        char *nums = amm_malloc(argc * sizeof(int)); // useing as int!
+        char *nums = amm_malloc(argc * sizeof(int)); // useing as decimal!
         
         for(int i=0; i<argc; ++i){
             nums[i] = atoi(argv[i]);	
@@ -452,6 +453,7 @@ int AmmSH_execute(char *line) {
         printf("%s\n", un);
         return 1;
     }
+    else if(astrcmp(cmd, "encrypt"))
 
     else if (astrcmp(cmd, "agrep") == 0) {
         // agrep FLAG [start_dir] ARG2 [ARG3]
@@ -655,7 +657,9 @@ int AmmSH_execute(char *line) {
         if(astrcmp(argv[0], "start") == 0){
             AmmDemon d; // temp demon
             d.apid = Ammdemon_count;
-
+            for(int i=0; i<argc; i++){
+                printf("argv[%d] = %s\n", i, argv[i]);
+            }
             if (!AmmINI(argv[1], &d)) {
                 return 0;
             }

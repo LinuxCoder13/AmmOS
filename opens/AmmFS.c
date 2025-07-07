@@ -49,7 +49,7 @@ char path[MAX_PATH];
 
 
 int up_path(){
-     char *mainpwd = amm_malloc(1024);   // кушаю твой память чтоб не втыкал хотя нет я кушаю свою память. блин :(
+     char mainpwd[1024];
      getcwd(mainpwd, 1024);
 
      char *ospwd = strstr(mainpwd, "/main");
@@ -61,7 +61,6 @@ int up_path(){
       else{
           snprintf(path, MAX_PATH, "~%s", ospwd + strlen("/main"));
       }
-      amm_free(mainpwd, 1024); // чють не забыл
       return 1;
 }
 
@@ -235,11 +234,12 @@ char **ls_conter(char* dire, int* out_i, AmmSHFlags mode, char* type){         /
             continue;
         }
 
-        int namelen = strlen(dir->d_name) + 1;       // +1 for '\0'
-        char* dirname = (char*)amm_malloc(namelen);  
-        strncpy(dirname, dir->d_name, namelen);
+        res = (char**)TwoDappend(&len, &cap, (void**)res, dir->d_name);
         
-        res = (char**)TwoDappend(&len, &cap, (void**)res, dirname);
+        if(res == NULL){
+            printf("fall in ls_counter()\n");
+            return NULL;
+        }
         (*out_i)++; // count number of valid entries
   
 
