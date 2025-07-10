@@ -22,24 +22,53 @@
 #ifndef STRING_H
 #define STRING_H 1
 
-/* Return lenght of string (ignoring '\0')*/
-extern long strlen(char* __s)
-    __attribute__ ((__pure__, __nonnull__(1)));
+#ifndef _nonnull
+#define _nonnull(...) __attribute__((__nonnull__(__VA_ARGS__)))
+#endif
 
-/* cmp _S1 and _S2*/
+#ifndef NULL
+#define NULL ((void*)0)
+#endif
+
+/* Return length of string (ignoring '\0') */
+extern long strlen(const char* __s)
+    _nonnull(1);
+
+/* Compare _S1 and _S2 */
 extern int strcmp(char* _S1, char* _S2)
-    __attribute__((__pure__, __nonnull__(1, 2)));
+    __attribute__((__pure__));
 
-/* cmp __n bytes _S1 and _S2 */
+/* Compare first __n bytes of _S1 and _S2 */
 extern int strncmp(char* _S1, char* _S2, long __n)
-    __attribute__((__pure__, __nonnull__(1, 2)));
+    __attribute__((__pure__));
 
-/* copy _S2 to end of _S1. Return _src*/
-extern char* strcpy(char* __dest, char* _src)
-    __attribute__((__pure__, __nonnull__(1, 2)));
+/* Copy from _src to __dest. Return __dest */
+extern char* strcpy(char* __dest, const char* _src)
+    _nonnull(1, 2);
 
-/* copy _n bytes from _src to __dest. Return _src*/
-extern char* strncpy(char* __dest, char* _src, long _n)
-    __attribute__((__pure__, __nonnull__(1, 2)));
+/* Copy _n bytes from _src to __dest. Return __dest */
+extern char* strncpy(char* __dest, const char* _src, long _n)
+    _nonnull(1, 2);
+
+/* Copy N bytes of SRC to DEST */
+extern void* memcpy(void* __dest, const void* _src, long _n)
+    _nonnull(1, 2);
+
+/* Copy N bytes of SRC to DEST with overlap-safe behavior */
+extern void* memmove(void* __dest, const void* __src, int __n)
+    _nonnull(1, 2);
+
+/* Find the first occurrence of character c in string s */
+extern char* strchr(const char* __s, char __c)
+    _nonnull(1);
+
+/* Find the last occurrence of character c in string s.
+   THIS FUNCTION DOES NOT EXIST IN glibc! */
+extern char* strrchr(const char* __s, char __c)
+    _nonnull(1);
+
+/* Find the substring _s in string __s */
+extern char* strstr(char* __s, const char* _s)
+    __attribute__((__pure__));
 
 #endif

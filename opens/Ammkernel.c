@@ -159,7 +159,6 @@ void** TwoDappend(int *len, int *cap, void **arr, void* value) {
     if (*len >= *cap) {
         int new_cap = *cap * 2;
         void **new_arr = amm_malloc(new_cap * sizeof(void*));
-        if (new_arr == NULL) printf("IDI NAHUY\n");
         for (int i = 0; i < *len; ++i) {
             new_arr[i] = arr[i];
         }
@@ -255,7 +254,6 @@ void adecrypt(char* targetfile, char* outfile){
         if (of) fclose(of);
         return;
     }
-
 
 
     char buff[MAX_VALUE_LEN + 1];

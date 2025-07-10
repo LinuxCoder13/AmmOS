@@ -20,143 +20,166 @@
  */
 #pragma GCC diagnostic ignored "-Wbuiltin-declaration-mismatch"
 
+#include "string.h"
 
-long strlen(char* __s) {
-    long len;
-    __asm__ __volatile__(
-        ".intel_syntax noprefix;"
-        "xor rcx, rcx;\n"            
-        "loop_strlen:;\n"
-        "mov al, [rdi + rcx];\n"     
-        "test al, al;\n"              
-        "jz done_strlen;\n"          
-        "inc rcx;\n"                 
-        "jmp loop_strlen;\n"         
-        "done_strlen:;\n"
-        "mov %0, rcx;\n"            
-        ".att_syntax;\n"
-        : "=r"((long)len)                
-        : "D"(__s)  // rdi    
-        : "rax", "rcx"          
-    );
+long strlen(const char* __s) {
+    register long len __asm__("rsi") = 0;
+    register const char* s __asm__("rdi") = __s;
+    while (*(s + len) != '\0') len++;
     return len;
 }
 
 int strcmp(char* _S1, char* _S2) {
-    int result;
-    __asm__ __volatile__(
-        ".intel_syntax noprefix;"
-        "xor rcx, rcx;\n"
-        "loop_strcmp:;\n"
-        "mov al, [%1 + rcx];\n"
-        "mov bl, [%2 + rcx];\n"
-        "cmp al, bl;\n"
-        "jne done_strcmp;\n"
-        "test al, al;\n"
-        "jz done_strcmp;\n"
-        "inc rcx;\n"
-        "jmp loop_strcmp;\n"
-        "done_strcmp:;\n"
-        "movzx eax, al;\n"
-        "movzx ebx, bl;\n"
-        "sub eax, ebx;\n"
-        "mov %0, eax;\n"
-        ".att_syntax;\n"
-        : "=r"(result)
-        : "r"(_S1), "r"(_S2)    
-        : "rax", "rbx", "rcx"
-    );
-    return result;
+    register int i __asm__("rsi") = 0;
+    register char *s1 __asm__("rdi") = _S1;
+    register char *s2 __asm__("rdx") = _S2;
+    while (*(s1 + i) && *(s2 + i) && *(s1 + i) == *(s2 + i)) i++;
+    return (unsigned char)*(s1 + i) - (unsigned char)*(s2 + i);
+}
+
+int strncmp(char* _S1, char* _S2, long __n) {
+    register long i __asm__("rsi") = 0;
+    register char* s1 __asm__("rdi") = _S1;
+    register char* s2 __asm__("rdx") = _S2;
+    while (i < __n && *(s1 + i) && *(s2 + i) && *(s1 + i) == *(s2 + i)) i++;
+    if (i == __n) return 0;
+    return (unsigned char)*(s1 + i) - (unsigned char)*(s2 + i);
+}
+
+char* strcpy(char* __dest, const char* __src) {
+    register char* s1 __asm__("rsi") = __dest;
+    register const char* s2 __asm__("rdi") = __src;
+    register long i __asm__("rdx") = 0;
+
+    while (*(s2 + i) != '\0') {
+        *(s1 + i) = *(s2 + i);
+        i++;
+    }
+    *(s1 + i) = '\0'; 
+    return __dest;
 }
 
 
-int strncmp(char* _S1, char* _S2, long __n){
-    int result;
-    __asm__ __volatile__(
-        ".intel_syntax noprefix;\n"
-        "xor rcx, rcx;\n"
-        "xor eax, eax;\n"
-        "xor ebx, ebx;\n"
-        "loop_strncmp%=:\n"
-        "cmp rcx, %1;\n"
-        "je done_strncmp%=;\n"
-        "mov al, [%2 + rcx];\n"
-        "mov bl, [%3 + rcx];\n"
-        "cmp al, bl;\n"
-        "jne done_strncmp%=;\n"
-        "test al, al;\n"
-        "je done_strncmp%=;\n"
-        "inc rcx;\n"
-        "jmp loop_strncmp%=;\n"
-        "done_strncmp%=:\n"
-        "movzx eax, al;\n"
-        "movzx ebx, bl;\n"
-        "sub eax, ebx;\n"
-        "mov %0, eax;\n"
-        ".att_syntax;\n"
-        : "=r" (result)
-        : "r" (__n), "r" (_S1), "r" (_S2)
-        : "rax", "rbx", "rcx"
-    );
-    return result;
+char* strncpy(char* __dest, const char* _src, long _n) {
+    register char* d __asm__("rsi") = __dest;
+    register const char* s __asm__("rdi") = _src;
+    register long i __asm__("rdx") = 0;
+    while (i < _n && *(s + i)) {
+        *(d + i) = *(s + i);
+        i++;
+    }
+    while (i < _n) {
+        *(d + i) = '\0';
+        i++;
+    }
+    return __dest;
+}
+
+void* memcpy(void* __dest, const void* _src, long _n) {
+    register char* d __asm__("rsi") = (char*)__dest;
+    register const char* s __asm__("rdi") = (char*)_src;
+    register long i __asm__("rdx") = 0;
+    while (i < _n) {
+        *(d + i) = *(s + i);
+        i++;
+    }
+    return __dest;
+}
+
+void *memmove (void *__dest, const void *__src, int __n){
+    register char* d __asm__ ("rsi") = (char*)__dest;       // W_AND_R
+    register const char* s __asm__ ("rdi") = (char*)__src;  // R_ONLY
+    register int n __asm__ ("rdx") = __n;
+    register int i __asm__ ("r8") = 0;
+
+    char *lastd;
+    const char *lasts;
+
+    if (d < s)
+        while (__n--)
+            *d++ = *s++;
+    else
+    {
+        lasts = s + (__n - 1);  // pointer to last byte of __src
+        lastd = d + (__n - 1);  // pointer to last byte of __dest
+        while (__n--)
+            *lastd-- = *lasts--;    // copy
+    }
+    return __dest; 
+
+}
+
+char* strchr(const char* __s, char __c){
+    register char* s __asm__("rsi") = (char*)__s;
+    register char c __asm__("rdi")  = __c;
+
+    for (; *s != '\0'; s++) {
+        if (*s == c) {
+            return s;
+        }
+    }
+
+    return NULL;
+}
+
+char* strrchr(const char* __s, char __c){
+    register long slen __asm__("rdx") = strlen(__s);
+
+    register char* s __asm__("rsi") = (char*)__s;
+    register char c __asm__("rdi")  = __c;
+
+    register char* lastc __asm__("r8") = NULL;
+
+    s += slen;
+    do {
+        s--;
+        if (*s == c) {
+            lastc = s;
+            break; 
+        }
+    } while (s >= __s);
+
+    return lastc; // can be NULL!
+}
+
+char* strstr(char* __s, const char* _s){
+    register char* haystack = __s;
+    register const char* needle = _s;
+
+    for (long i = 0; haystack[i]; i++) {
+        long j = 0;
+        while (*(needle + j) != '\0' && *(haystack + i + j) == *(needle + j)) {
+            j++;
+        }
+        if (!*(needle + j)) return (haystack + i);
+    }
+    return NULL;
 }
 
 
-char* strcpy(char* __dest, char* __src) {
-    char* tmp;
-    __asm__ __volatile__ (
-        ".intel_syntax noprefix;\n"
-        "mov rax, %1;\n"       // rax = src
-        "mov rbx, %2;\n"       // rbx = dest
-        "strcpy_loop:\n"
-        "mov cl, byte ptr [rax];\n"  // cl = *src
-        "mov byte ptr [rbx], cl;\n"  // *dest = cl
-        "inc rax;\n"
-        "inc rbx;\n"
-        "test cl, cl;\n"             // cl == '\0'?
-        "jne strcpy_loop;\n"
+char* strtok(char* str, const char* delim) {
+    static char* last = NULL;
+    
+    if (str != NULL) last = str;
+    else if (last == NULL) return NULL; // for first entry
 
-        "mov %0, %2;\n"        // return dest
 
-        ".att_syntax;\n"
-        : "=r"(tmp)
-        : "r"(__src), "r"(__dest)  
-        : "rax", "rbx", "rcx", "memory"
-    );
-    return tmp; // sorry but glibc does this
+    while (*last && strchr(delim, *last)) last++;
+
+    if (*last == '\0') return NULL;
+    
+    register char* token_start __asm__("rdi")= last;
+
+    while (*last && !strchr(delim, *last)) last++;
+
+    if (*last) {
+        *last = '\0';
+        last++;
+    } else {
+        last = NULL;
+    }
+
+    return token_start;
 }
 
-char* strncpy(char* __dest, char* __src, int _n){
-    char* tmp;
-    __asm__ __volatile__ (
-        ".intel_syntax noprefix;\n"
-        "mov rax, %1;\n"    // __src 
-        "mov rbx, %2;\n"    // __dest
-        "mov rcx, %3;\n"    // _n
-        "strncpy_loop:\n"
-        "test rcx, rcx;\n"
-        "je strncpy_done;\n"
-        "mov dl, byte ptr [rax];\n"
-        "mov byte ptr [rbx], dl;\n"
-        "inc rax;\n"
-        "inc rbx;\n"
-        "dec rcx;\n"
-        "test dl, dl;\n"
-        "jne strncpy_loop;\n"
-        "strncpy_zero:\n"
-        "test rcx, rcx;\n"
-        "je strncpy_done;\n"
-        "mov byte ptr [rbx], 0;\n"
-        "inc rbx;\n"
-        "dec rcx;\n"
-        "jmp strncpy_zero;\n"
-        "strncpy_done:\n"
-        "mov %0, %2;\n"
-        ".att_syntax;\n"
-        : "=r"(tmp)
-        : "r"(__src), "r"(__dest), "r"((long)_n)
-        : "rax", "rbx", "rcx", "rdx", "memory"
-    );
-    return tmp;
-}
 

@@ -2,15 +2,12 @@
 #include "/home/user/.local/ANG/alibc/string.h"
 
 int _start(void){
-    char* buff = "Hello from ANG!\n";
-    char* buff2 = "Hello from ANG!\n";
-
-    if(strncmp(buff, buff2, 5) == 0){
-        write(1, "hello, world\n", 14);
-    }
-    else{
-        write(1, "goodbuy, world\n", 16);
-    }
-
+    char buff[100] = "Hello from ANG!\n";
+    char buff2[100];
+    strncpy(buff2, buff, 13);
+    for (int i = 0; i < 17; i++) {
+    if (buff2[i] < 32 || buff2[i] > 126) buff2[i] = '.'; // заменим непечатаемые
+}
+    write(1, buff2, 17);
     _exit(0);
 }

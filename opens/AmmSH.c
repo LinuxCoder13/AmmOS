@@ -453,7 +453,12 @@ int AmmSH_execute(char *line) {
         printf("%s\n", un);
         return 1;
     }
-    else if(astrcmp(cmd, "encrypt"))
+    else if (strcmp(argv[0], "aencrypt") == 0 && argc == 3) {
+        aencrypt(argv[1], argv[2]);
+    }
+    else if (strcmp(argv[0], "adecrypt") == 0 && argc == 3) {
+        adecrypt(argv[1], argv[2]);
+    }
 
     else if (astrcmp(cmd, "agrep") == 0) {
         // agrep FLAG [start_dir] ARG2 [ARG3]
