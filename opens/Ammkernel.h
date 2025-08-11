@@ -37,6 +37,7 @@
 
 #include <stdint.h> // база
 #include <stddef.h>
+#include <stdatomic.h>
 
 #define VGA_WIDTH 70
 #define VGA_HEIGHT 90
@@ -49,6 +50,8 @@
 
 static uint8_t bit_map[BLOCK_COUNT]; // amm_malloc(), amm_free()
 static uint8_t *MEMORY;  // 1, 0
+extern unsigned long amm_malloc_count;
+extern unsigned long amm_free_count;
 
 #define MAX_DEMONS 12
 #define MAX_VARS 70
@@ -104,6 +107,10 @@ typedef struct {
 extern DictEntry aunicode[MAX_ENTRIES];
 extern int aunicode_count;
 
+void aencrypt(char* inputfile, char* outfile);
+void adecrypt(char* targetfile, char* outfile);
+
+
 extern void dict_set(char key, char* value);
 extern char* dict_get(char key);
 
@@ -130,6 +137,8 @@ extern int ls_cmd();
 extern int sizeinfo(char *filename, AmmSHFlags mode);
 extern int cat_cmd(char *filename, AmmSHFlags mode);
 extern int neofetch();
+extern int isin(char *str, char c);
+extern int is2arrin(char **str, char *str2);
 
 extern int AmmSH(const char *file_to_inter, AmmSHFlags);
 extern int AmmSH_execute(char *line);
@@ -164,14 +173,17 @@ extern void sigsegv_handler(int signum);
 extern char *catstr(char* s1, char* s2);
 extern void clean_line(char *line);
 extern int cat_expand(char *path, AmmSHFlags flag, AmmOpFunc func, char* type);
-extern char* get_folder_from_path(char* path);
+extern char* get_folder_from_path(char* path, char x);
 extern char* cut_suffix(char* path);
 extern int endsWith(char* folder, char* sufix);
 extern char* strlchr(const char* s, char c);
 extern char **ls_conter(char* dire, int* out_i, AmmSHFlags mode, char* type);
 extern char* grep_cmd(char* flag, char* dir, char* filename, char* _s, AmmSHFlags mode);
-
-
+extern void cut_after_substr(char *path, const char *substr);
+extern void GodSays();
+extern long long parse_proc_status_kb(char *key);
+extern long get_memdat_size();
+extern long parse_ammMemory_size();
 // VGA
 extern void vga_main();
 extern void vga_init();

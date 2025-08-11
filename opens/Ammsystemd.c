@@ -116,20 +116,19 @@ void startdemon(AmmDemon *demon){
     }
 
     if (pid == 0) {
-        // Дочерний процесс
         fclose(stdin);
         fclose(stdout);
         fclose(stderr);
 
         int res = AmmSH(demon->execfilename, BACKGROUND);
-        _exit(res); // Передаём код возврата в родителя
+        _exit(res);
     }
 
     printf("[INFO] Demon '%s' start successfully with apid=%d\n", demon->name, demon->apid);
 }
 // swap demon in memory
 void savedemon(AmmDemon *demon){
-    demons[Ammdemon_count].apid = Ammdemon_count; // короче сохрани конфиги
+    demons[Ammdemon_count].apid = Ammdemon_count;
     strncpy(demons[Ammdemon_count].comment, demon->comment, sizeof(demon->comment));
     demons[Ammdemon_count].pid = demon->pid;
     strncpy(demons[Ammdemon_count].name, demon->name, sizeof(demon->name));
@@ -145,6 +144,7 @@ void savedemon(AmmDemon *demon){
 int killdemon(AmmDemon *demon){    // return the the pid to do final kill in killdemon()
     if (demon->apid == 0) {
         printf("asystemd: pid 0 is protected\n");
+        puts("God says: That daemon is eternal.");
         return 0;
     }
 

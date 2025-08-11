@@ -51,17 +51,21 @@ microkernel life (2025 - ...)*/
 #include <time.h>
 #include <pthread.h>
 #include <signal.h>
+#include <stdatomic.h>
+
     
+#include <ctype.h>
 
 #ifndef MAP_ANONYMOUS
 #define MAP_ANONYMOUS 0x20
 #endif
 
-
+// go to .bss
 static uint8_t bit_map[BLOCK_COUNT]; // amm_malloc(), amm_free()
 static uint8_t *MEMORY;  // 1, 0
+unsigned long amm_free_count = 0;
+unsigned long amm_malloc_count = 0;
 
-// go to .bss
 DictEntry aunicode[MAX_ENTRIES];
 int aunicode_count = 0;
 
@@ -96,9 +100,11 @@ void *amm_malloc(int __size) {
                 for (int j = start; j <= i; ++j) {
                     bit_map[j] = 1;
                 }
+                amm_malloc_count += 1;
                 return MEMORY + (start * BLOCK_SIZE);
             }
-        } else {
+        } 
+        else {
             consec = 0;  
         }
     }
@@ -117,6 +123,7 @@ void amm_free(void *ptr, int __size) {
     for (int i = start; i < start + blocks && i < BLOCK_COUNT; ++i) {
         bit_map[i] = 0;
     }
+    amm_free_count++;
 }
 
 
@@ -136,7 +143,7 @@ char* append(int *len, int *cap, char* oldarr, char value) {
             newarr[i] = oldarr[i];
         }
 
-        amm_free(oldarr, *len);  // исправлено
+        amm_free(oldarr, *len); 
         oldarr = newarr;
     }
 
@@ -154,11 +161,14 @@ void** TwoDappend(int *len, int *cap, void **arr, void* value) {
         *cap = 4;
         arr = amm_malloc(*cap * sizeof(void*));
         *len = 0;                 
+
     }
 
     if (*len >= *cap) {
         int new_cap = *cap * 2;
+        // Allocate space for new_arr[0 .. new_cap - 1], each of type (void *)
         void **new_arr = amm_malloc(new_cap * sizeof(void*));
+
         for (int i = 0; i < *len; ++i) {
             new_arr[i] = arr[i];
         }
@@ -169,12 +179,11 @@ void** TwoDappend(int *len, int *cap, void **arr, void* value) {
 
     int sz = strlen((char*)value) + 1;
 
-    char* strcopy = amm_malloc(sz);
+    char* strcopy = astrdup(value);
     if(strcopy == NULL){
         printf("FATAL: MEMORY FULL\n");
         return NULL;
     }
-    memcpy(strcopy, value, sz);
 
     arr[*len] = strcopy;
     (*len)++;
@@ -185,13 +194,11 @@ void** TwoDappend(int *len, int *cap, void **arr, void* value) {
 
 void TwoDfree(char **arr, int count) {
     if (!arr) return;
-    // сначала освобождаем каждую строку
     for (int i = 0; i < count; ++i) {
         if (arr[i]) {
             amm_free(arr[i], strlen(arr[i]) + 1);
         }
     }
-    // затем сам указатель на массив
     amm_free(arr, count * sizeof(char *));
 }
 
@@ -275,8 +282,24 @@ void adecrypt(char* targetfile, char* outfile){
     fclose(of);
 }
 
+int isin(char *str, char c){ for(int i=0; *str != '\0'; i++) if((*str + i) == c) return 1; return 0;}
+int is2arrin(char **str, char *str2){ for(int i=0; *str != ((void*)0); ++i) if(astrcmp(str[i], str2) == 0) return 1; return 0;}
 
 char* username(){
+
+    // I was try trying to disasemble AmmOS and find adress of password in .rodata and I did it :)
+
+    // char buff[12];
+    // printf("Please write password: ");
+    // fgets(buff, 12, stdin);
+    // buff[strcspn(buff, "\n")] = '\0';
+
+    // while(strcmp(buff, "hello") != 0){
+    //     printf("Wrong password try again: ");
+    //     fgets(buff, 12, stdin);
+    //     buff[strcspn(buff, "\n")] = '\0';
+
+    // }
 
     char fpath[100];	
     char fpath2[100];
@@ -288,7 +311,16 @@ char* username(){
     chdir(fpath);
 
     char *username = (char*)amm_malloc(15);
+    if (!username) {
+    fprintf(stderr, "amm_malloc failed!\n");
+    exit(1);
+}
     username[0] = '\0';
+
+    if (!username) {
+    fprintf(stderr, "amm_malloc failed!\n");
+    exit(1);
+}
 
     FILE *fl = fopen("username.txt", "r");
     if (fl && fgets(username, 15, fl)) {
@@ -302,6 +334,8 @@ char* username(){
         printf("Hello, Welcome to AmmOS!\nAmmOS is using GPLv3 (C) \nPlease write your username to continue: ");
         fgets(username, 15, stdin);
         username[strcspn(username, "\n")] = '\0';
+
+
 
         FILE *fl_w = fopen("username.txt", "w");
         if (fl_w) {
@@ -332,6 +366,7 @@ char* get_username(AmmSHFlags mode) {
     static char username[20]; 
     char *fpath = amm_malloc(100);	
     char *fpath2 = amm_malloc(100);
+
 
     getcwd(fpath, 100);
     getcwd(fpath2, 100);
@@ -480,7 +515,7 @@ int diskread(AmmSHFlags mode){
     chdir(obs_path2);   // come back
     return 1;
 }
-inline void removen(char *str, int n){
+inline void removen(char *str, int n){  // bro! inline is a good item use it!
     int len = strlen(str);
     if (n >= len){
         str[0] = '\0';
@@ -490,7 +525,7 @@ inline void removen(char *str, int n){
 }
 
 
-void inline cut_after_substr(char *path, const char *substr) { // bro! inline is a good item use it!
+void cut_after_substr(char *path, const char *substr) { 
     char *pos = strstr(path, substr);
     if (pos) {
         pos += strlen(substr);
@@ -498,7 +533,164 @@ void inline cut_after_substr(char *path, const char *substr) { // bro! inline is
     }
 }
 
+void GodSays() {
+    srand(time(NULL));  
+    int n = rand() % 100;
 
+    switch (n) {
+        case 0: puts("God says: Don't touch that."); break;
+        case 1: puts("God says: Proceed."); break;
+        case 2: puts("God says: Turn off the computer."); break;
+        case 3: puts("God says: Reboot and try again."); break;
+        case 4: puts("God says: TempleOS is holy."); break;
+        case 5: puts("God says: Type carefully."); break;
+        case 6: puts("God says: Trust the kernel."); break;
+        case 7: puts("God says: Pray before compiling."); break;
+        case 8: puts("God says: Thou shalt not segfault."); break;
+        case 9: puts("God says: Seek the logs."); break;
+        case 10: puts("God says: You are not root."); break;
+        case 11: puts("God says: Run as root, but beware."); break;
+        case 12: puts("God says: Kill -9 wisely."); break;
+        case 13: puts("God says: Read the docs."); break;
+        case 14: puts("God says: No printf debugging."); break;
+        case 15: puts("God says: Use `make clean`."); break;
+        case 16: puts("God says: Memory is sacred."); break;
+        case 17: puts("God says: Silence is golden."); break;
+        case 18: puts("God says: Check the stack."); break;
+        case 19: puts("God says: Avoid undefined behavior."); break;
+        case 20: puts("God says: Respect segmentation."); break;
+        case 21: puts("God says: Watch your pointers."); break;
+        case 22: puts("God says: Don't leak memory."); break;
+        case 23: puts("God says: Use amm_malloc."); break;
+        case 24: puts("God says: Fork not in vain."); break;
+        case 25: puts("God says: There are no coincidences."); break;
+        case 26: puts("God says: AmmSH is watching."); break;
+        case 27: puts("God says: Avoid infinite loops."); break;
+        case 28: puts("God says: Give `resb` what it deserves."); break;
+        case 29: puts("God says: Align your soul."); break;
+        case 30: puts("God says: The compiler sees all."); break;
+        case 31: puts("God says: Delete wisely."); break;
+        case 32: puts("God says: Debug is sacred ritual."); break;
+        case 33: puts("God says: Commit often."); break;
+        case 34: puts("God says: Comments are commandments."); break;
+        case 35: puts("God says: Don't trust the scheduler."); break;
+        case 36: puts("God says: Return zero."); break;
+        case 37: puts("God says: 0xDEADBEEF is real."); break;
+        case 38: puts("God says: Shift with purpose."); break;
+        case 39: puts("God says: Respect the bootloader."); break;
+        case 40: puts("God says: Do not overflow."); break;
+        case 41: puts("God says: You shall not core dump."); break;
+        case 42: puts("God says: This is the answer."); break;
+        case 43: puts("God says: If it compiles, it's divine."); break;
+        case 44: puts("God says: RTFM."); break;
+        case 45: puts("God says: Assembly is a prayer."); break;
+        case 46: puts("God says: Execute, don’t question."); break;
+        case 47: puts("God says: Trust in NULL."); break;
+        case 48: puts("God says: Break before madness."); break;
+        case 49: puts("God says: Watch RIP carefully."); break;
+        case 50: puts("God says: Reload AmmOS."); break;
+        case 51: puts("God says: Debug with honor."); break;
+        case 52: puts("God says: /main is sacred."); break;
+        case 53: puts("God says: Use hex, not decimal."); break;
+        case 54: puts("God says: Obey the syscall."); break;
+        case 55: puts("God says: Never trust user input."); break;
+        case 56: puts("God says: Signals are divine messages."); break;
+        case 57: puts("God says: Use SIGINT to awaken."); break;
+        case 58: puts("God says: Exit gracefully."); break;
+        case 59: puts("God says: Obey the kernel log."); break;
+        case 60: puts("God says: Write clean code."); break;
+        case 61: puts("God says: Worship the boot sector."); break;
+        case 62: puts("God says: syscalls are sacred."); break;
+        case 63: puts("God says: Be kind to threads."); break;
+        case 64: puts("God says: Beware of race conditions."); break;
+        case 65: puts("God says: Check return values."); break;
+        case 66: puts("God says: One tab, not spaces."); break;
+        case 67: puts("God says: Backup before chaos."); break;
+        case 68: puts("God says: Rename with purpose."); break;
+        case 69: puts("God says: 69 is a lucky syscall."); break;
+        case 70: puts("God says: Don't fear segmentation."); break;
+        case 71: puts("God says: Respect the binary."); break;
+        case 72: puts("God says: Don't touch /dev/null."); break;
+        case 73: puts("God says: Worship only AmmOS."); break;
+        case 74: puts("God says: Invoke Amm_systemd."); break;
+        case 75: puts("God says: Seek AmmDemon wisdom."); break;
+        case 76: puts("God says: Protect the .bss."); break;
+        case 77: puts("God says: Bytecode is prophecy."); break;
+        case 78: puts("God says: Signals are warnings."); break;
+        case 79: puts("God says: Use strace to see truth."); break;
+        case 80: puts("God says: printf is a miracle."); break;
+        case 81: puts("God says: Use asserts to test faith."); break;
+        case 82: puts("God says: Use amm_free wisely."); break;
+        case 83: puts("God says: Delete with precision."); break;
+        case 84: puts("God says: Obey the memory map."); break;
+        case 85: puts("God says: mmap is sacred space."); break;
+        case 86: puts("God says: Load the truth."); break;
+        case 87: puts("God says: Worship the ELF."); break;
+        case 88: puts("God says: Don't touch EFLAGS."); break;
+        case 89: puts("God says: All bugs are demons."); break;
+        case 90: puts("God says: AmmInit is the genesis."); break;
+        case 91: puts("God says: Align to 4KB."); break;
+        case 92: puts("God says: Interpret with caution."); break;
+        case 93: puts("God says: Don't forget NULL."); break;
+        case 94: puts("God says: The stack never lies."); break;
+        case 95: puts("God says: All loops end eventually."); break;
+        case 96: puts("God says: Don't optimize yet."); break;
+        case 97: puts("God says: Reboot in doubt."); break;
+        case 98: puts("God says: Create, not copy."); break;
+        case 99: puts("God says: You are chosen."); break;
+    }
+}
+
+long long parse_proc_status_kb(char *key) {
+    FILE *f = fopen("/proc/self/status", "r");
+    if (!f) return -1;
+
+    char line[256];
+    while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, key, strlen(key)) == 0) {
+            char *p = strchr(line, ':');
+            if (!p) continue;  
+            p++; 
+
+            while (isspace(*p)) p++;
+
+            long long value_kb = atoll(p);
+            fclose(f);
+            return value_kb;
+        }
+    }
+
+    fclose(f);
+    return -1;
+}
+
+long parse_ammMemory_size(){
+    long result = 0;
+    for(int i=0; i<BLOCK_COUNT; i++){
+        if(bit_map[i]) result++;
+    }
+    return result * BLOCK_SIZE;
+}
+
+long get_memdat_size() {
+    struct stat st;
+    char obspath[256];
+    char obspath2[256];
+
+    getcwd(obspath, 256);
+    getcwd(obspath2, 256);
+
+    cut_after_substr(obspath, "/AmmOS");
+    chdir(obspath);
+
+    if (stat("Memory/disk.dat", &st) == 0){
+        long result = (long)st.st_size;
+        chdir(obspath2);
+        return result;
+    }
+    return 0;
+    chdir(obspath2);
+}
 
 // now functions for os
 
@@ -507,6 +699,7 @@ int AmmIDE(AmmSHFlags mode){
     
     char* obs_path2 = (char*)amm_malloc(256);
     char* obs_path = (char*)amm_malloc(256);
+
 
     getcwd(obs_path2, 256);
     getcwd(obs_path, 256);
@@ -539,9 +732,10 @@ start:
             int num = atoi(buff);
             if(num > 256 || num < 0){
                 if(mode == 2){
-                    puts("Please enter value <0-256>");
+                    puts("Please enter value <0-255>");
                     goto start;
                 }
+                goto start;
             }
             unsigned char c = (char)num;
             fputc(c, fl);
@@ -573,6 +767,8 @@ start:
 
         else if (strcmp("exit", buff) == 0){
 	       chdir(obs_path2); // I alweys come back;
+           amm_free(obs_path, 256);
+           amm_free(obs_path2, 256);
            printf("\n");
            return 1;
         }
@@ -580,24 +776,48 @@ start:
         else{
             if(mode == 2) printf("AmmIDE: no command found!\n");
         } 
-
-                
     }
+    amm_free(obs_path, 256);
+    amm_free(obs_path2, 256);
+    return 1;
 }
 
 
 int neofetch(){
+    struct stat st;
+    char obspath[256];
+    char obspath2[256];
+
+    getcwd(obspath, 256);
+    getcwd(obspath2, 256);
+
+    cut_after_substr(obspath, "/AmmOS");
+    chdir(obspath);
+    FILE *f = fopen("opens/AmmOS", "rb");
+    if (!f) {
+        perror("fopen");
+        return 1;
+    }
+    fseek(f, 0, SEEK_END);
+    long binary_size = ftell(f);
+    short HDD_size = get_memdat_size();
+
+    
 
     printf("\033[1;33m        ==AmmOS==\033[0m\n\n");
     printf("\033[1;37m       /\\\033[0m          \033[;31mKernel:\033[0m Ammkernel \n");
     printf("\033[1;37m      /  \\\033[0m         \033[;31mShell:\033[0m AmmSH (not bash) \n");
     printf("\033[1;37m     /    \\\033[0m        \033[;31mVersion:\033[0m 0.8 \n");
     printf("\033[1;37m    /======\\\033[0m       \033[;31mFS:\033[0m AmmFS (calls Linux)\n");
-    printf("\033[1;37m   / Amm-OS \\\033[0m      \033[;31mMemory:\033[0m 27.8kb\n");
+    printf("\033[1;37m   / Amm-OS \\\033[0m      \033[;31mSizeof(AmmOS.elf):\033[0m %ld KB\n", binary_size / 1024);
     printf("\033[1;37m  /==========\\\033[0m     \033[;31mGPU:\033[0m Ammgpu (2d arr)\n");
-    printf("\033[1;37m /    ____    \\\033[0m    \033[;31mRAM:\033[0m disk.dat\n");
-    printf("\033[1;37m/____/    \\____\\\033[0m  \033[;32m Flags:\033[0m -n, -s, -b  \n");	
+    printf("\033[1;37m /    ____    \\\033[0m    \033[;31mRAM:\033[0m %lld/%lld\n", parse_ammMemory_size(), MEMSIZE);
+    printf("\033[1;37m/____/    \\____\\\033[0m  \033[;32m Flags:\033[0m -n, -s, -b  \n");
+    printf("                   \033[;31mHDD:\033[0m %lld/4069 %s\n", HDD_size, 
+    (HDD_size > 4069) ? "HDD is full!" : "");
 
+    fclose(f);
+    chdir(obspath2);
     return 1;
 }
 
@@ -714,7 +934,7 @@ int init_sys(void){
     dict_set('g', "!!3z@Lp"); dict_set('h', "pp@*8ls");
     
     // uper-case A-Z
-    dict_set('A', "$euf*vb"); dict_set("B", "I*Vu*vei");
+    dict_set('A', "$euf*vb"); dict_set('B', "I*Vu*vei");
     dict_set('C', "@29dj#kL"); dict_set('D', "m&*sdf83"); dict_set('E', "7^bV@e!!"); dict_set('F', "^^9ds@lm"); dict_set('G', "*sk#mv03"); dict_set('H', "lp@#9xZ&");
     dict_set('I', "z!83@klq"); dict_set('J', "Uw#1!mkd"); dict_set('K', "00&xve@q"); dict_set('L', "rr*8@Xjw"); dict_set('M', "k!!ss&33"); dict_set('N', "^z*0Ls1@");
     dict_set('O', "pP@x3*vl"); dict_set('P', "d^@z8&Ui"); dict_set('Q', "++9ksj@1"); dict_set('R', "iZz@!qkL"); dict_set('S', "!x#p02LM"); dict_set('T', "vbL@zZ&&");
@@ -769,6 +989,6 @@ int main() {
     pthread_create(&cli_thread, NULL, cli, NULL);
     
 
-    while (1) sleep(1);
+    while (1) sleep(0xff);
 
 }

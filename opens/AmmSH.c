@@ -335,8 +335,6 @@ int AmmSH_execute(char *line) {
     argc = preprocessor(argc, argv);
 
 
-    // ... и дальше остальной код
-
     // CLI
     if (astrcmp(cmd, "c") == 0) {
         printf("\033[2J\033[H");
@@ -415,7 +413,8 @@ int AmmSH_execute(char *line) {
     }
 
     else if (astrcmp(cmd, "AmmSH") == 0 && argc > 0 ) {
-        char *results = amm_malloc(sizeof(int) * argc); // useing as decimal!
+        char *results = amm_malloc(sizeof(int) * argc); 
+        atomic_fetch_add(&amm_malloc_count, 1);
         int success = 1;
 
         for (int i = 0; i < argc; ++i) {
@@ -426,11 +425,13 @@ int AmmSH_execute(char *line) {
             }
         }
         amm_free(results, sizeof(int) * argc);
+        atomic_fetch_add(&amm_free_count, 1);
         return success;
     }
 
     else if (astrcmp(cmd, "sleep") == 0 && argc > 0){ // brooo this works really slow :(
-        char *nums = amm_malloc(argc * sizeof(int)); // useing as decimal!
+        int *nums = amm_malloc(argc * sizeof(int)); // useing as decimal!
+        atomic_fetch_add(&amm_malloc_count, 1);
         
         for(int i=0; i<argc; ++i){
             nums[i] = atoi(argv[i]);	
@@ -441,6 +442,7 @@ int AmmSH_execute(char *line) {
         }
         
         amm_free(nums, argc * sizeof(int));
+        atomic_fetch_add(&amm_free_count, 1);
         return 1;
     }
 
@@ -453,11 +455,11 @@ int AmmSH_execute(char *line) {
         printf("%s\n", un);
         return 1;
     }
-    else if (strcmp(argv[0], "aencrypt") == 0 && argc == 3) {
-        aencrypt(argv[1], argv[2]);
+    else if (strcmp(cmd, "aencrypt") == 0 && argc == 3) {
+        aencrypt(argv[0], argv[1]);
     }
-    else if (strcmp(argv[0], "adecrypt") == 0 && argc == 3) {
-        adecrypt(argv[1], argv[2]);
+    else if (strcmp(cmd, "adecrypt") == 0 && argc == 3) {
+        adecrypt(argv[0], argv[1]);
     }
 
     else if (astrcmp(cmd, "agrep") == 0) {
@@ -468,7 +470,8 @@ int AmmSH_execute(char *line) {
         if (argc < 2) {
             printf("agrep: usage:\n"
                 "  agrep -r-file  <filename> [& optional start_dir]\n"
-                "  agrep -r-str   <filename> <pattern> [& optional start_dir]\n");
+                "  agrep -r-str   <filename> <pattern> [& optional start_dir]\n"
+                "  agrep -r-file-str <filename> <pattern> [& optional start_dir]\n");
             return 1;
         }
 
@@ -478,14 +481,14 @@ int AmmSH_execute(char *line) {
         char *start    = ".";
 
         if (astrcmp(flage, "-r-file") == 0) {
-            // Если у нас три аргумента, третий — это стартовая директория
             if (argc >= 3) start = argv[2];
 
             char *res = grep_cmd("-r-file", start, filename, NULL, flag);
             if (res) {
                 printf("%s\n", res);
                 amm_free(res, strlen(res)+1);
-            } else {
+            } 
+            else {
                 printf("agrep: '%s' not found under '%s'\n", filename, start);
             }
         }
@@ -501,10 +504,30 @@ int AmmSH_execute(char *line) {
             if (res) {
                 printf("%s\n", res);
                 amm_free(res, strlen(res)+1);
-            } else {
+            } 
+            else {
                 printf("agrep: pattern '%s' not found in '%s' under '%s'\n",
                     pattern, filename, start);
             }
+        }
+        else if (astrcmp(flage, "-r-file-str") == 0){
+            if(argc < 3){
+                printf("agrep: missing pattern for -r-file-str\n");;
+                return 0;
+            }
+            pattern = argv[2];
+            if(argc >= 4) start = argv[3];
+            char *res = grep_cmd("-r-file-str", start, filename, pattern, flag);
+
+            if (res) {
+                printf("%s\n", res);
+                amm_free(res, strlen(res)+1);
+            } 
+            else {
+                printf("agrep: pattern '%s' not found in '%s' under '%s'\n",
+                    pattern, filename, start);
+            }
+
         }
         else {
             printf("agrep: unknown flag '%s'\n", flage);
@@ -608,7 +631,9 @@ int AmmSH_execute(char *line) {
         return 1;
     }
 
-
+    else if(astrcmp(cmd, "God") == 0 && astrcmp(argv[0], "says") == 0){
+        GodSays();
+    }
 
     else if (astrcmp(cmd, "rm") == 0 && argc > 0) {
         for (int i = 0; i < argc; i++) {
@@ -678,8 +703,8 @@ int AmmSH_execute(char *line) {
             int apid = atoi(argv[1]);
             for (int i = 0; i < Ammdemon_count; ++i) {
                 if (demons[i].apid == apid) {
-                    killdemon(&demons[i]);
-                    printf("asystemd: killed demon %d\n", apid);
+                    if (killdemon(&demons[i]) == 1)
+                        printf("asystemd: killed demon %d\n", apid);
                     return 1;
                 }
             }
@@ -695,10 +720,20 @@ int AmmSH_execute(char *line) {
             }
             return 1;
         }
-
     }
+    else if(astrcmp(cmd, "memreg") == 0){
+        printf("VmSize: %ld kB\n", parse_proc_status_kb("VmSize"));
+        printf("VmRSS:  %ld kB\n", parse_proc_status_kb("VmRSS"));
+        printf("HDD: %ld/4069 B %s\n", get_memdat_size(), (get_memdat_size() > 4069) ? "HDD is full!" : "");
+        printf("RAM: %ld/%ld\n", parse_ammMemory_size(), MEMSIZE);
+        printf("amm_malloc_count(got free): %lldB. Notice: username pointer never got free\n", amm_malloc_count);
+        printf("amm_free_count: %lldB.\n", amm_free_count);
+        return 1;
+    }
+
+    
     else if(astrcmp(cmd, "help") == 0){
-        puts("AmmSH: I didn't write docx file please check AmmOS/README.md or look at in https://github.com/LinuxCoder13/AmmOS.git");
+        puts("AmmSH: I didn't write help message, please check AmmOS/README.md or look in https://github.com/LinuxCoder13/AmmOS.git");
     }
     else {
         printf("AmmSH: command '%s' not found!\n", cmd);

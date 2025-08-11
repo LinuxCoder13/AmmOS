@@ -172,6 +172,7 @@ char* cut_suffix(char* path){
 
     int len = strlen(dotp);
     char* suffix = (char*)amm_malloc(len + 1); // +1 for '\0'
+
     
     strncpy(suffix, dotp, len);
     suffix[len] = 0;
@@ -181,14 +182,15 @@ char* cut_suffix(char* path){
 
 //  "path/to/dir/*" -> "path/to/dir"
 //  "path/to/file/*.txt" -> "path/to/file/(ALL FILES WITH .txt ENDING)" -> return
-char *get_folder_from_path(char *path) {
-    char *star = strchr(path, '*');
+char *get_folder_from_path(char *path, char x) {
+    char *star = strlchr(path, x);
     
     if (star == NULL) return NULL;
     int len = star - path; // from index 0 to index before '*' char
     
     if (len == 0) {  
         char *dot = amm_malloc(2);
+    
         dot[0] = '.';
         dot[1] = '\0';
         return dot;
@@ -197,6 +199,7 @@ char *get_folder_from_path(char *path) {
     
     if (path[len - 1] == '/') len--; // на всякий случай
     char *folder = amm_malloc(len + 1);
+
     strncpy(folder, path, len);
     folder[len] = '\0';
 
@@ -250,7 +253,7 @@ char **ls_conter(char* dire, int* out_i, AmmSHFlags mode, char* type){         /
     return res;
 }
 
-// version 2.0 
+// version 2.5 
 char* grep_cmd(char* flag, char* dir, char* filename, char* _s, AmmSHFlags mode) {
     DIR *d = opendir(dir);
     if (!d) return NULL;
@@ -276,6 +279,7 @@ char* grep_cmd(char* flag, char* dir, char* filename, char* _s, AmmSHFlags mode)
                 if (astrcmp(flag, "-r-file") == 0) {
                     closedir(d);
                     char *copy = amm_malloc(strlen(fullpath) + 1);
+                
                     strcpy(copy, fullpath);
                     return copy;
                 }
@@ -285,8 +289,10 @@ char* grep_cmd(char* flag, char* dir, char* filename, char* _s, AmmSHFlags mode)
                     if (!fp) continue;
 
                     char line[512];
+                    unsigned long line_count = 0;
                     int found = 0;
                     while (fgets(line, sizeof(line), fp)) {
+                        line_count++;
                         if (strstr(line, _s)) {
                             found = 1;
                             break;
@@ -297,9 +303,34 @@ char* grep_cmd(char* flag, char* dir, char* filename, char* _s, AmmSHFlags mode)
                     if (found) {
                         closedir(d);
                         char *copy = amm_malloc(strlen(fullpath) + 1);
-                        strcpy(copy, fullpath);
+                    
+                        snprintf(copy, strlen(fullpath)+1, "fist conditions met on line \"%ld\"\n", line_count);
                         return copy;
                     }
+                }
+                else if(!astrcmp(flag, "-r-file-str")){
+                    FILE *fp = fopen(fullpath, "r");
+                    if (!fp) continue;
+
+                    char line[512];
+                    unsigned long line_count = 0;
+                    int found = 0;
+                    while (fgets(line, sizeof(line), fp)) {
+                        line_count++;
+                        if (strstr(line, _s)) {
+                            found = 1;
+                            break;
+                        }
+                    }
+                    fclose(fp);
+
+                    if (found) {
+                        closedir(d);
+                        int needed = snprintf(NULL, 0, "first conditions met on line \"%lu\" \nPath:%s", line_count, fullpath);
+                        char *copy = amm_malloc(needed + 1);
+                        snprintf(copy, needed + 1, "first conditions met on line \"%lu\" \nPath:%s", line_count, fullpath);
+                        return copy;
+                    }                    
                 }
             }
         }
@@ -324,7 +355,7 @@ int sizeinfo(char *filename, AmmSHFlags mode){
 
 int cat_cmd(char *filename, AmmSHFlags mode){
     struct stat info;
-    char *tmp = amm_malloc(1024);    //  надеюсь хватит
+    char tmp[1024];
 
     if(stat(filename, &info) != 0){
        if (mode == NORMAL) printf("AmmSH: I didn't find '%s', no such file\n", filename);
@@ -354,7 +385,6 @@ int cat_cmd(char *filename, AmmSHFlags mode){
             }
   
          fclose(fl);
-         amm_free(tmp, 1024);
    }
    return 1;
 }
@@ -368,7 +398,7 @@ int cat_expand(char *path, AmmSHFlags flag, AmmOpFunc func, char* type) {
     }
 
     // 1) cut path before '*'
-    char *folder = get_folder_from_path(path);
+    char *folder = get_folder_from_path(path, '*');
     if (!folder) return 0;
     
     // 2) get suffix of file 
@@ -399,7 +429,9 @@ int cat_expand(char *path, AmmSHFlags flag, AmmOpFunc func, char* type) {
     // 7) free all becouse we don't need this info eny more
     TwoDfree(files, count);
     amm_free(folder, strlen(folder) + 1);
-    if (suffix && suffix[0] != '\0') amm_free(suffix, strlen(suffix) + 1);
+    if (suffix && suffix[0] != '\0'){ 
+        amm_free(suffix, strlen(suffix) + 1);
+    }
     return 1;
 }
 
@@ -418,6 +450,7 @@ int rm_cmd(char* dirname, AmmSHFlags mode) {
     struct dirent *dir;
     struct stat st;
     char* now_path = amm_malloc(469);
+
     DIR *d = opendir(dirname);
 
     if (!d) {

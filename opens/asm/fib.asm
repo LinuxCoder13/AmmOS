@@ -34,6 +34,7 @@ section .text
 extern Ammkernel
 global fib
 
+
 fib:
     push r8
     push r9
