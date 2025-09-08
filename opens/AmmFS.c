@@ -55,7 +55,6 @@ int up_path(){
      char *ospwd = strstr(mainpwd, "/main");
       if (ospwd == NULL){
           printf("AmmOS: FATAL: check the struct of progect -> AmmOS/opens/user/main\n");
-          amm_free(mainpwd, 1024);
           return 0;
      }
       else{
@@ -411,7 +410,7 @@ int cat_expand(char *path, AmmSHFlags flag, AmmOpFunc func, char* type) {
     char **files = ls_conter(folder, &count, flag, type);
     if (files == NULL) {
         if(flag == NORMAL) perror("opendir failed");
-        amm_free(folder, strlen(folder) + 1);
+        amm_free(folder);
         return 0;
     }
 
@@ -428,9 +427,9 @@ int cat_expand(char *path, AmmSHFlags flag, AmmOpFunc func, char* type) {
 
     // 7) free all becouse we don't need this info eny more
     TwoDfree(files, count);
-    amm_free(folder, strlen(folder) + 1);
+    amm_free(folder);
     if (suffix && suffix[0] != '\0'){ 
-        amm_free(suffix, strlen(suffix) + 1);
+        amm_free(suffix);
     }
     return 1;
 }
@@ -455,7 +454,7 @@ int rm_cmd(char* dirname, AmmSHFlags mode) {
 
     if (!d) {
         if (mode == NORMAL) perror("opendir");
-        amm_free(now_path, 469);
+        amm_free(now_path);
         return 0;
     }
 
@@ -476,7 +475,7 @@ int rm_cmd(char* dirname, AmmSHFlags mode) {
 
     closedir(d);
     rmdir(dirname); 
-    amm_free(now_path, 469);
+    amm_free(now_path);
     return 1;
 }
 

@@ -23,7 +23,7 @@
 section .data 
     msg1 db "Enter number of iterations: "
     len1 equ $ - msg1
-    msg2 db "To big number, max '92'", 10, 10, 0
+    msg2 db "To big number, max '185'", 10, 10, 0
     len2 equ $ - msg2
 
 section .bss
@@ -65,29 +65,32 @@ fib:
     mov rcx, rax
     cmp rcx, 0 ; Do you think I am stupid ?!
     jle .done
-    cmp rcx, 93
+    cmp rcx, 185
     jge .toooo_big
-    
-    ; // start
-    mov r8, 0
+
     mov r9, 1
-
-    ; rcx = number of iterations
-    ; r8 = 0
-    ; r9 = 1
-
+    mov r8, 0
 ; must be O(n)
+
+; 128bit fib
 .next_num:
     cmp rcx, 1
     jbe .printnum
 
-    mov rax, r9     ; rax = r9 
-    add r9, r8      ; r9 = r9 + r8
-    mov r8, rax     ; r8 = old r9
-    
-    dec rcx         
-    jnz .next_num
+    ; tmp = curr
+    mov r9, r8
+    mov rsi, rdx
 
+    ; curr = curr + prev
+    add r8, rax
+    adc rdx, rbx
+
+    ; prev = tmp
+    mov rax, r9
+    mov rbx, rsi
+
+    dec rcx
+    jnz .next_num
 
 .printnum:
     

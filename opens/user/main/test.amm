@@ -1,3 +1,0 @@
-NAME=SEGVSIGV test
-EXECUTE=test.sh
-COMMENT=debug for memory leak

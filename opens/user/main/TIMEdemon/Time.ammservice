@@ -1,0 +1,5 @@
+# Background daemon that increments AmmOS uptime every 2 seconds. Required for monitoring, logs and AmmSH time-related commands.
+
+NAME=Time counter
+EXECUTE=uptime.sh
+COMMENT=It's the demon who count up time

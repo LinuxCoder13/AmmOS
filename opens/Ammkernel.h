@@ -44,12 +44,19 @@
 #define MAX_PATH 256
 #define FS_ROOT "opens/user/main"
 
-#define MEMSIZE (256 * 1024)        
-#define BLOCK_SIZE 64                
+#define STAK_START 0x400
+#define STAK_END   0x7FF
+
+#define HEAP_START 0x800
+static uint8_t *sp;
+static uint8_t *heap;
+
+#define MEMSIZE (1024 * 64)        
+#define BLOCK_SIZE 1               
 #define BLOCK_COUNT (MEMSIZE / BLOCK_SIZE)
 
-static uint8_t bit_map[BLOCK_COUNT]; // amm_malloc(), amm_free()
-static uint8_t *MEMORY;  // 1, 0
+static uint8_t bit_map_alloc[BLOCK_COUNT]; 
+static uint8_t *MEMORY;
 extern unsigned long amm_malloc_count;
 extern unsigned long amm_free_count;
 
@@ -123,6 +130,7 @@ extern void savedemon(AmmDemon *demon);
 extern int bitmapload(AmmSHFlags mode);
 
 extern char* username();
+extern void change_username(const char* newname);
 extern void str_ascii(char *str, int *arr);
 extern int ascii_int(char c);
 extern void int_ascii(long integer, char* buffer); 
@@ -139,6 +147,7 @@ extern int cat_cmd(char *filename, AmmSHFlags mode);
 extern int neofetch();
 extern int isin(char *str, char c);
 extern int is2arrin(char **str, char *str2);
+volatile static unsigned long long uptime = 0;
 
 extern int AmmSH(const char *file_to_inter, AmmSHFlags);
 extern int AmmSH_execute(char *line);
@@ -158,12 +167,15 @@ extern int echo_cmd(char *msg);
 
 // Memory-alloc funcs
 extern void* amm_malloc(int __size);
-extern void amm_free(void* ptr, int size);
+extern void amm_free(void* ptr);
 extern void amm_init();
 extern void** TwoDappend(int *len, int *cap, void **arr, void* value);
 extern void TwoDfree(char **arr, int len);
 extern char* append(int *len, int *cap, char* oldarr, char value);
 extern char* astrdup(char* p);
+
+extern void amm_push(void* arr, long n);
+extern void* amm_pop(void* dest, long n); 
 
 extern int memload(AmmSHFlags mode);
 extern int rm_cmd(char* dirname, AmmSHFlags mode);

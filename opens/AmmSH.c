@@ -424,7 +424,7 @@ int AmmSH_execute(char *line) {
                 success = 0;
             }
         }
-        amm_free(results, sizeof(int) * argc);
+        amm_free(results);
         atomic_fetch_add(&amm_free_count, 1);
         return success;
     }
@@ -441,7 +441,7 @@ int AmmSH_execute(char *line) {
             sleep(nums[i]);
         }
         
-        amm_free(nums, argc * sizeof(int));
+        amm_free(nums);
         atomic_fetch_add(&amm_free_count, 1);
         return 1;
     }
@@ -454,6 +454,25 @@ int AmmSH_execute(char *line) {
         }
         printf("%s\n", un);
         return 1;
+    }
+    else if(astrcmp(cmd, "chg") == 0){
+        if(astrcmp(argv[0], "-un") == 0){
+            change_username(argv[1]);
+            puts("AmmSH: done. For the changes to take effect write \"reboot\"");
+        }
+    }
+    else if(astrcmp(cmd, "reboot") == 0){
+        char runpath[0xff];
+        char run[0xff];
+        getcwd(runpath, 0xff);
+
+        cut_after_substr(runpath, "AmmOS");
+        snprintf(run, 0xff, "%s/run", runpath);
+        
+        if (execl(run, run, (char*)(void*)0) == -1) {
+            perror("execl");
+            return 1;
+        }
     }
     else if (strcmp(cmd, "aencrypt") == 0 && argc == 3) {
         aencrypt(argv[0], argv[1]);
@@ -486,7 +505,7 @@ int AmmSH_execute(char *line) {
             char *res = grep_cmd("-r-file", start, filename, NULL, flag);
             if (res) {
                 printf("%s\n", res);
-                amm_free(res, strlen(res)+1);
+                amm_free(res);
             } 
             else {
                 printf("agrep: '%s' not found under '%s'\n", filename, start);
@@ -503,7 +522,7 @@ int AmmSH_execute(char *line) {
             char *res = grep_cmd("-r-str", start, filename, pattern, flag);
             if (res) {
                 printf("%s\n", res);
-                amm_free(res, strlen(res)+1);
+                amm_free(res);
             } 
             else {
                 printf("agrep: pattern '%s' not found in '%s' under '%s'\n",
@@ -521,7 +540,7 @@ int AmmSH_execute(char *line) {
 
             if (res) {
                 printf("%s\n", res);
-                amm_free(res, strlen(res)+1);
+                amm_free(res);
             } 
             else {
                 printf("agrep: pattern '%s' not found in '%s' under '%s'\n",
@@ -687,9 +706,6 @@ int AmmSH_execute(char *line) {
         if(astrcmp(argv[0], "start") == 0){
             AmmDemon d; // temp demon
             d.apid = Ammdemon_count;
-            for(int i=0; i<argc; i++){
-                printf("argv[%d] = %s\n", i, argv[i]);
-            }
             if (!AmmINI(argv[1], &d)) {
                 return 0;
             }

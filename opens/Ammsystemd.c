@@ -51,52 +51,6 @@
 AmmDemon demons[MAX_DEMONS];
 int Ammdemon_count = 0;
 
-int AmmINI(char* file_to_inter, AmmDemon *demon){
-    FILE *fl = fopen(file_to_inter, "r");
-    if(!fl){
-        printf("AmmINI: fail to open '%s'\n", file_to_inter);
-        return 0;
-    }
-
-    char buff[70];
-    char** argv = NULL;
-    int len=0, cap=0;
-    int argc = 0;
-
-    while(fgets(buff, sizeof(buff), fl)){
-        clean_line(buff);  
-        if(strlen(buff) == 0) continue;
-        argv = (char**)TwoDappend(&len, &cap, (void**)argv, buff);
-        argc++;
-    }
-    fclose(fl);
-
-    for(int i=0; i<argc; ++i){
-        if(strncmp(argv[i], "NAME=", 5) == 0){
-            removen(argv[i], 5);
-            strncpy(demon->name, argv[i], sizeof(demon->name));
-        }
-        else if(strncmp(argv[i], "EXECUTE=", 8) == 0){
-            removen(argv[i], 8);
-            strncpy(demon->execfilename, argv[i], sizeof(demon->execfilename));
-        }
-        else if(strncmp(argv[i], "COMMENT=", 8) == 0){
-            removen(argv[i], 8);
-            strncpy(demon->comment, argv[i], sizeof(demon->comment));
-        }
-        else if(argv[i][0] == '#')
-            continue; // just a comment in file
-        else{
-            printf("AmmINI: unknown flag: %s\n", argv[i]);
-            TwoDfree(argv, len);
-            return 0;
-        }
-    }
-    TwoDfree(argv, len);
-    return 1;
-}
-
-
 void infodemon(AmmDemon *demon){
     printf("PID=%d, \nAPID=%d, \nExecuting file=%s, \nComment=%s\n",
         demon->pid, 
@@ -128,16 +82,8 @@ void startdemon(AmmDemon *demon){
 }
 // swap demon in memory
 void savedemon(AmmDemon *demon){
-    demons[Ammdemon_count].apid = Ammdemon_count;
-    strncpy(demons[Ammdemon_count].comment, demon->comment, sizeof(demon->comment));
-    demons[Ammdemon_count].pid = demon->pid;
-    strncpy(demons[Ammdemon_count].name, demon->name, sizeof(demon->name));
-    strncpy(demons[Ammdemon_count].execfilename, demon->execfilename, sizeof(demon->execfilename));
-
     demons[Ammdemon_count] = *demon;
-    demons[Ammdemon_count].apid = Ammdemon_count;
     Ammdemon_count++;
-
 }
 
 // local kill (free space for another demon)

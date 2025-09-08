@@ -52,6 +52,8 @@ microkernel life (2025 - ...)*/
 #include <pthread.h>
 #include <signal.h>
 #include <stdatomic.h>
+#include <sys/syscall.h>
+
 
     
 #include <ctype.h>
@@ -61,8 +63,8 @@ microkernel life (2025 - ...)*/
 #endif
 
 // go to .bss
-static uint8_t bit_map[BLOCK_COUNT]; // amm_malloc(), amm_free()
-static uint8_t *MEMORY;  // 1, 0
+// static uint8_t bit_map_alloc[BLOCK_COUNT]; 
+// static uint8_t *MEMORY;
 unsigned long amm_free_count = 0;
 unsigned long amm_malloc_count = 0;
 
@@ -80,52 +82,81 @@ void amm_init(void) {
         exit(1);
     }
     memset(MEMORY, 0, MEMSIZE);
-    memset(bit_map, 0, sizeof(bit_map));
+    memset(bit_map_alloc, 0, sizeof(bit_map_alloc));
+    sp = (uint8_t*)MEMORY + STAK_END;
+    heap = (uint8_t*)MEMORY + HEAP_START;
 }
 
-// I a sorry for this shit
+void* amm_malloc(int __size) __attribute__((malloc));
+// I am sorry for this O(n) shit
 void *amm_malloc(int __size) {
     if (__size <= 0) {
-        return NULL;
+        return (void*)0;
     }
 
-    int blocks_needed = (__size + BLOCK_SIZE - 1) / BLOCK_SIZE;
-    int consec = 0;
+    register long blocks_needed __asm__("rax") = (__size + sizeof(int) + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    register long consec __asm__("rbx") = 0;
 
-    for (int i = 0; i < BLOCK_COUNT; ++i) {
-        if (!bit_map[i]) {
+    for (register int i __asm__("rcx") = 0; i < BLOCK_COUNT; ++i) { 
+        if (!bit_map_alloc[i]) {
             consec++;
             if (consec == blocks_needed) {
                 int start = i - blocks_needed + 1;
-                for (int j = start; j <= i; ++j) {
-                    bit_map[j] = 1;
-                }
-                amm_malloc_count += 1;
-                return MEMORY + (start * BLOCK_SIZE);
+                for (register int j __asm__("rdx") = start; j <= i; ++j) bit_map_alloc[j] = 1;
+
+                amm_malloc_count ++;
+                int* meta = (int*)((uint8_t*)heap + start * BLOCK_SIZE);
+                *meta = __size;
+                return (void*)((char*)meta + sizeof(int));
             }
         } 
         else {
             consec = 0;  
         }
     }
-
+    
     return NULL;
 }
 
+void amm_free(void *ptr) {
+    if (!ptr) return;
 
-void amm_free(void *ptr, int __size) {
-    if (!ptr || __size <= 0) return;
-    intptr_t offset = (uint8_t*)ptr - MEMORY;
-    if (offset < 0 || offset >= MEMSIZE) return;
+    int* meta = (int*)((char*)ptr - sizeof(int));
+    int size = *meta; // mov size, [meta] ; lol
 
-    int start = offset / BLOCK_SIZE;
-    int blocks = (__size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    int start = ((char*)meta - (char*)heap) / BLOCK_SIZE;
+    int blocks = (size + sizeof(int) + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    
     for (int i = start; i < start + blocks && i < BLOCK_COUNT; ++i) {
-        bit_map[i] = 0;
+        bit_map_alloc[i] = 0;
     }
     amm_free_count++;
 }
 
+
+void amm_push(void* arr, long n){
+    register char *_arr __asm__("rdi") = (char*)arr;
+    register long _n __asm__("rsi") = n;
+
+    if (sp - (long)_n < (uint8_t*)MEMORY + STAK_END) {
+        puts("Stack overflow!"); return;
+    }
+    
+    for(int i=0; i < _n; ++i) *sp-- = *_arr++;
+}
+
+
+void* amm_pop(void* dest, long n) {
+    register char* d __asm__("rdi") = (char*)dest;
+    register long _n __asm__("rsi") = n;
+
+    if (sp + (long)n > (uint8_t*)MEMORY + STAK_END) {
+        puts("Stack underflow!"); 
+        return NULL;
+    }
+    for(long i = 0; i < n; ++i) d[i] = *++sp;
+    return dest;
+}
 
 char* append(int *len, int *cap, char* oldarr, char value) {
     if (*cap <= 0) *cap = 4;
@@ -143,7 +174,7 @@ char* append(int *len, int *cap, char* oldarr, char value) {
             newarr[i] = oldarr[i];
         }
 
-        amm_free(oldarr, *len); 
+        amm_free(oldarr); 
         oldarr = newarr;
     }
 
@@ -172,7 +203,7 @@ void** TwoDappend(int *len, int *cap, void **arr, void* value) {
         for (int i = 0; i < *len; ++i) {
             new_arr[i] = arr[i];
         }
-        amm_free(arr, *cap * sizeof(void*));
+        amm_free(arr);
         arr = new_arr;
         *cap = new_cap;
     }
@@ -196,10 +227,10 @@ void TwoDfree(char **arr, int count) {
     if (!arr) return;
     for (int i = 0; i < count; ++i) {
         if (arr[i]) {
-            amm_free(arr[i], strlen(arr[i]) + 1);
+            amm_free(arr[i]);
         }
     }
-    amm_free(arr, count * sizeof(char *));
+    amm_free(arr);
 }
 
 void dict_set(char key, char* value){
@@ -285,68 +316,6 @@ void adecrypt(char* targetfile, char* outfile){
 int isin(char *str, char c){ for(int i=0; *str != '\0'; i++) if((*str + i) == c) return 1; return 0;}
 int is2arrin(char **str, char *str2){ for(int i=0; *str != ((void*)0); ++i) if(astrcmp(str[i], str2) == 0) return 1; return 0;}
 
-char* username(){
-
-    // I was try trying to disasemble AmmOS and find adress of password in .rodata and I did it :)
-
-    // char buff[12];
-    // printf("Please write password: ");
-    // fgets(buff, 12, stdin);
-    // buff[strcspn(buff, "\n")] = '\0';
-
-    // while(strcmp(buff, "hello") != 0){
-    //     printf("Wrong password try again: ");
-    //     fgets(buff, 12, stdin);
-    //     buff[strcspn(buff, "\n")] = '\0';
-
-    // }
-
-    char fpath[100];	
-    char fpath2[100];
-
-    getcwd(fpath, 100);
-    getcwd(fpath2, 100);
-
-    cut_after_substr(fpath, "AmmOS/opens/user");
-    chdir(fpath);
-
-    char *username = (char*)amm_malloc(15);
-    if (!username) {
-    fprintf(stderr, "amm_malloc failed!\n");
-    exit(1);
-}
-    username[0] = '\0';
-
-    if (!username) {
-    fprintf(stderr, "amm_malloc failed!\n");
-    exit(1);
-}
-
-    FILE *fl = fopen("username.txt", "r");
-    if (fl && fgets(username, 15, fl)) {
-        username[strcspn(username, "\n")] = '\0'; 
-    }
-    
-    
-    if(fl) fclose(fl);
-
-    if (username[0] == '\0' || strlen(username) < 2) {
-        printf("Hello, Welcome to AmmOS!\nAmmOS is using GPLv3 (C) \nPlease write your username to continue: ");
-        fgets(username, 15, stdin);
-        username[strcspn(username, "\n")] = '\0';
-
-
-
-        FILE *fl_w = fopen("username.txt", "w");
-        if (fl_w) {
-            fprintf(fl_w, "%s\n", username);
-            fclose(fl_w);
-        }
-    }
-
-    chdir(fpath2);
-    return username;
-}
 
 
 void removetab(char *str) {
@@ -385,8 +354,8 @@ char* get_username(AmmSHFlags mode) {
 
     if (fl) fclose(fl);
     chdir(fpath2);
-    amm_free(fpath, 100);
-    amm_free(fpath2, 100);
+    amm_free(fpath);
+    amm_free(fpath2);
     return username; 
 }
 
@@ -480,7 +449,7 @@ int memload(AmmSHFlags mode){
 
 int bitmapload(AmmSHFlags mode){
     for(int i=0; i<BLOCK_COUNT; ++i){
-        printf("%hd, ", bit_map[i]);
+        printf("%hd, ", bit_map_alloc[i]);
     }
     printf("\n");
     return 1;
@@ -667,7 +636,7 @@ long long parse_proc_status_kb(char *key) {
 long parse_ammMemory_size(){
     long result = 0;
     for(int i=0; i<BLOCK_COUNT; i++){
-        if(bit_map[i]) result++;
+        if(bit_map_alloc[i]) result++;
     }
     return result * BLOCK_SIZE;
 }
@@ -697,8 +666,8 @@ long get_memdat_size() {
     	 
 int AmmIDE(AmmSHFlags mode){
     
-    char* obs_path2 = (char*)amm_malloc(256);
-    char* obs_path = (char*)amm_malloc(256);
+    char obs_path2[256];
+    char obs_path[256]; 
 
 
     getcwd(obs_path2, 256);
@@ -766,19 +735,15 @@ start:
         }
 
         else if (strcmp("exit", buff) == 0){
-	       chdir(obs_path2); // I alweys come back;
-           amm_free(obs_path, 256);
-           amm_free(obs_path2, 256);
-           printf("\n");
-           return 1;
+            chdir(obs_path2);
+            printf("\n");
+            return 1;
         }
 
         else{
             if(mode == 2) printf("AmmIDE: no command found!\n");
         } 
     }
-    amm_free(obs_path, 256);
-    amm_free(obs_path2, 256);
     return 1;
 }
 
@@ -839,7 +804,10 @@ void KERNEL_PANIC(){
     fflush(stdout);
     exit(7);
 }
-
+void sigint_handler(int signum){
+    (void)signum;
+    puts("\nAmmSH: please use command \"ex\" to exit");
+}
 
 void sigsegv_handler(int signum) {
     KERNEL_PANIC();
@@ -883,11 +851,11 @@ char* astrdup(char* p){
 }
 
 
-// I made this bro for .asm
+// my ABI
 void* funcs[] = {   // total 28 functions 
     amm_malloc, amm_free, username, str_ascii,  
         
-    ascii_int, int_ascii, NULL, diskread,  // I will fix this I promise! 
+    ascii_int, int_ascii, sigint_handler, diskread,   
       
     AmmIDE, removen, mkfile, mkdir_cmd, 
         
@@ -901,13 +869,10 @@ void* funcs[] = {   // total 28 functions
     
 };
 
-
-
-
-
 int init_sys(void){
     amm_init(); // init memory
     signal(SIGSEGV, sigsegv_handler); // segfalt handler
+    signal(SIGINT, sigint_handler);
     
     // init main pid
     demons[0].pid=getpid();
@@ -925,6 +890,12 @@ int init_sys(void){
         demons[i].comment[0] = '\0';
     }
     signal(SIGCHLD, SIG_IGN);
+
+    // AmmTimeDemon
+    // AmmDemon d;
+    // d.apid=Ammdemon_count;
+    // if(!AmmINI("TIMEdemon/Time.ammservice", &d)) exit(228); // to check write `echo $?`
+
 
     // lower-case a-z
     dict_set('a', "*lk3@f!"); dict_set('b', "^vZ@01x"); dict_set('c', "qq@!!s0"); dict_set('d', "x1p@z#9"); dict_set('e', "&L2@jkz"); dict_set('f', "mkL!@02");
@@ -982,13 +953,11 @@ void *cli(void* HelloWorld){
     }
 }
 
-
 int main() {
     init_sys();
     pthread_t cli_thread;
     pthread_create(&cli_thread, NULL, cli, NULL);
     
-
     while (1) sleep(0xff);
 
 }
