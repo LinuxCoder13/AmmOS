@@ -1,10 +1,9 @@
 											      
-AmmOS — is free software and pseudo-OS (x86-64), licensed under GNU GPL v3.
+AmmOS — is free software and pseudo-OS (x86-64), licensed under MIT.
 It's an experimental modular shell-driven system built for fun, learning, and low-level control.
 AmmOS is made for experimental/educational purpose it's can be runed only in Linux(Debian, Ubuntu, ... WSL2)  for compile write in '.' folder ->
 (`./make.sh`) and run in main folder (`./run`).
 
-AmmOS is licensed under the GNU General Public License v3.0 or later. See LICENSE for details.
 
 # Dependencies
 `nasm` && `gcc`
