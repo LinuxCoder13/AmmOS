@@ -4232,8 +4232,8 @@ AmmOS:     формат файла elf64-x86-64
   406095:	b8 01 00 00 00       	mov    eax,0x1
   40609a:	c9                   	leave
   40609b:	c3                   	ret
-
-000000000040609c <rf_cmd>:
+  
+  000000000040609c <rf_cmd>:
   40609c:	55                   	push   rbp
   40609d:	48 89 e5             	mov    rbp,rsp
   4060a0:	48 83 ec 10          	sub    rsp,0x10
@@ -4288,7 +4288,7 @@ AmmOS:     формат файла elf64-x86-64
   406169:	00 00 00 
   40616c:	ba 0c 00 00 00       	mov    edx,0xc
   406171:	0f 05                	syscall
-  406173:	c6 80 e4 fe 48 00 00 	mov    BYTE PTR [rax+0x48fee4],0x0
+  406173:	c6 80 e4 fe 48 00 00 	mov    BYTE PTR [rax+0x0048fee4],0x0
   40617a:	b8 01 00 00 00       	mov    eax,0x1
   40617f:	bf 01 00 00 00       	mov    edi,0x1
   406184:	48 be 18 e3 40 00 00 	movabs rsi,0x40e318

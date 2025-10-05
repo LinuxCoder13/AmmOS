@@ -19,19 +19,25 @@
  *
  * This file is part of AmmOS.
  *
- * AmmOS is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
  *
- * AmmOS is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
  *
- * You should have received a copy of the GNU General Public License
- * along with AmmOS.  If not, see <https://www.gnu.org/licenses/>.
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
  */
+
 
 
 #include <stdio.h>
@@ -110,14 +116,13 @@ int variable_initialization(char* name, char* value, int type){
     return 1;
 }
 
-// моя аритиктура - мои костыли 
+
 int reval_var(char* name, char* value, char* operator){
     int i, j;
-    int anoter_var_value = 2000001; // error code
+    int anoter_var_value = 20000001; // error code
 
     // eroor code 60 - means that user try inc string
 
-    // если value — это другая переменная
     if (value[0] == '$') {
         removen(value, 1); 
         for (j = 0; j < var_count; j++) {
@@ -134,7 +139,7 @@ int reval_var(char* name, char* value, char* operator){
             int type = tmp->type;
 
             if (astrcmp(operator, "=") == 0) {
-                if (value && value[0] == '$' && anoter_var_value != 2000001)
+                if (value && value[0] == '$' && anoter_var_value != 20000001)
                     tmp->i = anoter_var_value;
                 else if (type == INT) tmp->i = atoi(value);
                 else if (type == CHAR) tmp->c = value[0];
@@ -143,14 +148,14 @@ int reval_var(char* name, char* value, char* operator){
 
             else if (astrcmp(operator, "+=") == 0) {
                 if (type != INT) return 60;
-                tmp->i += (value[0] == '$' && anoter_var_value != 2000001)
+                tmp->i += (value[0] == '$' && anoter_var_value != 20000001)
                           ? anoter_var_value
                           : atoi(value);
             }
 
             else if (astrcmp(operator, "-=") == 0) {
                 if (type != INT) return 60;
-                tmp->i -= (value[0] == '$' && anoter_var_value != 2000001)
+                tmp->i -= (value[0] == '$' && anoter_var_value != 20000001)
                           ? anoter_var_value
                           : atoi(value);
             }
@@ -414,7 +419,7 @@ int AmmSH_execute(char *line) {
 
     else if (astrcmp(cmd, "AmmSH") == 0 && argc > 0 ) {
         char *results = amm_malloc(sizeof(int) * argc); 
-        atomic_fetch_add(&amm_malloc_count, 1);
+
         int success = 1;
 
         for (int i = 0; i < argc; ++i) {
@@ -425,13 +430,12 @@ int AmmSH_execute(char *line) {
             }
         }
         amm_free(results);
-        atomic_fetch_add(&amm_free_count, 1);
+
         return success;
     }
 
     else if (astrcmp(cmd, "sleep") == 0 && argc > 0){ // brooo this works really slow :(
         int *nums = amm_malloc(argc * sizeof(int)); // useing as decimal!
-        atomic_fetch_add(&amm_malloc_count, 1);
         
         for(int i=0; i<argc; ++i){
             nums[i] = atoi(argv[i]);	
@@ -442,7 +446,6 @@ int AmmSH_execute(char *line) {
         }
         
         amm_free(nums);
-        atomic_fetch_add(&amm_free_count, 1);
         return 1;
     }
 
