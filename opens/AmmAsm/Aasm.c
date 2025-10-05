@@ -1,8 +1,35 @@
 # 0 "Aasm.c"
 
+/*
+ * AmmOS - Minimal Modular Operating System
+ * Copyright (C) 2025 Ammar Najafli
+ *
+ * This file is part of AmmOS.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -24,7 +51,7 @@
 #define T_REG32     0x05
 #define T_REG64     0x06
 // #define T_GREG      0x07
-#define T_PTRID     0x08
+// #define T_PTRID     0x08
 #define T_ADDR_EXPR 0x09
 #define T_ID        0x0a
 #define T_STR       0x0b
@@ -54,10 +81,10 @@
 // #define ASTEOF   0x03
 
 #define MAX_TOKENS 1024
-
-// .rodata
+                
+// .rodata            
 const char *CMDS[] = {"mov", "push", "pop", "syscall", "call", "jmp", "add", "sub", 
-               "mul", "div", "j==", "j!=", "j>", "j<", "j>=", "j<=", "j!", /* jmp if NULL or '\0' */
+               "mul", "div", "je", "jne", "jg", "jl", "jge", "jle", "jz", "ja", "jb",
                "xor", "or", "cmp", "inc", "dec", "nop", "ret", "leave", "test", "lea", "not", 
                "and", "shl", "shr", NULL};
 
@@ -67,8 +94,7 @@ const char *HUMAN_AST[] = {
     "U32",    "U32PTR",
     "U16",    "U16PTR",
     NULL
-};
-
+}; 
 const char *HUMAN_TOKEN[] = {"inst", "label", "reg", "[reg]", "[reg +-*/ value]", "string", NULL};
 
 /* name of label can include only this chars */
@@ -137,10 +163,8 @@ typedef struct {
 Token toks[MAX_TOKENS];
 int toks_count = 0;
 
-typedef struct {
-    const char* text;     
-    const char* filename; 
-    int         length;   
+typedef struct {   
+    const char* filename;  
     char        buf[256]; 
     Token*      toks;
     char labelscope[256]; 
@@ -154,19 +178,11 @@ int ast_count = 0;
 
 const char *p;
 
-enum {
-    CMD_MOV, CMD_PUSH, CMD_POP, CMD_SYSCALL,
-    CMD_CALL, CMD_JMP, CMD_ADD, CMD_SUB,
-    CMD_MUL, CMD_DIV, CMD_JE, CMD_JNE,
-    CMD_JG, CMD_JL, CMD_JGE, CMD_JLE, CMD_JNULL,
-    CMD_XOR, CMD_OR, CMD_CMP, CMD_INC, CMD_DEC, CMD_NOP,
-    CMD_COUNT
-};
 
 int isin(char *str, char c){ for(int i=0; *str != '\0'; i++) if((*str + i) == c) return 1; return 0;}
-int is2arrin(char **str, char *str2){ for(int i=0; *str != ((void*)0); ++i) if(astrcmp(str[i], str2) == 0) return 1; return 0;}
+int is2arrin(char *str[], char *str2){ for(int i=0; str[i] != NULL; ++i) if(strcasecmp(str[i], str2) == 0) return 1; return 0;}
 
-const char *p;
+
 
 long parse_number() {
     while (isspace(*p)) p++;
@@ -185,8 +201,12 @@ long parse_number() {
 
     int res = 0;
     if(*p == '0'){
-        p++;
-        if(*p == 'x' || *p == 'X'){ p++; res = strtol(p, NULL, 16); return res;;}
+        char *end;
+        if(*(p+1) == 'x' || *(p+1) == 'X'){ 
+            res = strtol(p, &end, 16);
+            p = end;
+            return res;
+        }
         else return 0;
     }
     while (isdigit(*p)) {
@@ -245,18 +265,27 @@ void add_token(int type, char* value, int line){
     }
     toks[toks_count].line = line;
     toks[toks_count].type = type;
-    toks[toks_count].value = astrdup(value);
+    toks[toks_count].value = strdup(value);
     toks_count++;
 }
 
 int is_inst(char* s){
     for(int i=0; CMDS[i]; ++i){
-        if(strcmp(s, CMDS[i]) == 0){
+        if(strcasecmp(s, CMDS[i]) == 0){
             return 1;
         }
     }
     //else
     return 0;
+}
+
+// Compare n bytes of s and CMDS[i]
+int is_inst_n(const char* s, int n){
+    int i = 0;
+    int j = n;
+    for(i, j; *s && CMDS[i]; i++, ++j){
+
+    }
 }
 
 int is_reg(const char *s) __attribute__((__nonnull__(1)));
@@ -270,27 +299,27 @@ int is_reg(const char *s){
     while(isspace(*s))s++;
     
     for(int i=0; regs8[i]; i++){
-        if(strcmp(s, *(regs8+i)) == 0){
+        if(strcasecmp(s, *(regs8+i)) == 0){
             return 1;
         }
     }
     for(int i=0; regs16[i]; i++){
-        if(strcmp(s, *(regs16+i)) == 0){
+        if(strcasecmp(s, *(regs16+i)) == 0){
             return 2;
         }
     }
     for(int i=0; regs32[i]; i++){
-        if(strcmp(s, *(regs32+i)) == 0){
+        if(strcasecmp(s, *(regs32+i)) == 0){
             return 3;
         }
     }
     for(int i=0; regs64[i]; i++){
-        if(strcmp(s, *(regs64+i)) == 0){
+        if(strcasecmp(s, *(regs64+i)) == 0){
             return 4;
         }
     }
     for(int i=0; regs64GP[i]; i++){
-        if(strcmp(s, *(regs64GP+i)) == 0){
+        if(strcasecmp(s, *(regs64GP+i)) == 0){
             return 5;
         }
     }
@@ -364,14 +393,13 @@ void As64(long long a, unsigned char out[8]) {
     out[7] = (a >> 56) & 0xff;
 }
 
-
 // lexer:
 int LEXER(FILE* fl) {
     if (!fl) {
         fprintf(stderr, "AmmAsm:\033[;31m Fatal: no such file or dir\033[0m\n");
         exit(1);
     }
-
+// НЕ УМЕЕТ ПРАВИЛЬНО ПАРСИТЬ ИНСТРУКЦИИ!!!!!
     Lexer lexer = {0};
     int line = 0;
     int in_comment = 0;
@@ -402,12 +430,16 @@ int LEXER(FILE* fl) {
                 while (isin(*buff, LETEXT)) {
                     buf[i++] = *buff++;
                 }
-
+                
                 if (*buff == ':') {
                     buff++;
-                    strcpy(lexer.labelscope, buf);
+                    strncpy(lexer.labelscope, buf, 256);
                     add_token(T_LAB, buf, line);
-                } else {
+                }
+                else if (is2arrin(CMDS, buf)){
+                    add_token(T_INS, buf, line);
+                }
+                else {
                     add_token(T_ID, buf, line);
                 }
             }
@@ -421,6 +453,7 @@ int LEXER(FILE* fl) {
                 }
 
                 char full[512] = {0};
+                if(lexer.labelscope[0] == 0){fprintf(stderr, "AmmAsm: Used local label with out global label on line \"%d\"", line); exit(1);}
                 snprintf(full, sizeof(full), "%s.%s", lexer.labelscope, buf); // labelscope + "." + buf
 
                 if (*buff == ':') {
@@ -461,7 +494,7 @@ int LEXER(FILE* fl) {
 
                 char val_str[32];
                 snprintf(val_str, sizeof(val_str), "%lld", value);
-                add_token(T_INT, strdup(val_str), line);
+                add_token(T_INT, val_str, line);
             }
             else if(*buff == '"'){
                 buff++;
@@ -469,7 +502,7 @@ int LEXER(FILE* fl) {
                 char parsed_str[256] = {0};
                 buff = read_string(buff, parsed_str, line);
 
-                if(*buff == '"') *buff++;
+                if(*buff == '"') buff++;
                 else {
                     fprintf(stderr, "AmmAsm: unterminated string literal at line %d\n", line);
                     exit(1);
@@ -513,7 +546,7 @@ int LEXER(FILE* fl) {
                 long long c = 0;
                 buff++;
                 if(*buff++ == 'x'){  // hex
-                    while (isin(LETEXT, *buff++)) {
+                    while (isin(LETEXT, *buff)) {
                         if (*buff >= '0' && *buff <= '9') c = c * 16 + (*buff - '0');  
                         else if (*buff >= 'a' && *buff <= 'f') c = c * 16 + (*buff - 'a' + 10);                       
                         else if (*buff >= 'A' && *buff <= 'F') c = c * 16 + (*buff - 'A' + 10);                       
@@ -561,12 +594,12 @@ int LEXER(FILE* fl) {
                         clean_expr[k++] = expr_buf[j];
                     }
                }
-                // @todo: write parser SIB for adress
+                
                 add_token(T_ADDR_EXPR, strdup(clean_expr), line);
             }
             else if (*buff == '!') {
                 buff++; 
-                if (strncmp(buff, "section", 7) == 0) {
+                if (strncasecmp(buff, "section", 7) == 0) {
                     buff += 7;
                     while (*buff == ' ' || *buff == '\t') buff++;
 
@@ -591,20 +624,20 @@ int LEXER(FILE* fl) {
                 while (isin(LET, *buff) && i < (int)(sizeof(buffer)-1)){
                     buffer[i] = *buff++;
                 }
-                if(strcmp(buffer, HUMAN_AST[0]) == 0) add_token(T_BYTE, buffer, line);
-                else if(strcmp(buffer, HUMAN_AST[1]) == 0) add_token(T_BYTEPTR, buffer, line);
-                else if(strcmp(buffer, HUMAN_AST[2]) == 0) add_token(T_QWORD, buffer, line);
-                else if(strcmp(buffer, HUMAN_AST[3]) == 0) add_token(T_QWORDPTR, buffer, line);
-                else if(strcmp(buffer, HUMAN_AST[4]) == 0) add_token(T_DWORD, buffer, line);
-                else if(strcmp(buffer, HUMAN_AST[5]) == 0) add_token(T_DWORDPTR, buffer, line);
-                else if(strcmp(buffer, HUMAN_AST[6]) == 0) add_token(T_LBYTE, buffer, line);
-                else if(strcmp(buffer, HUMAN_AST[7]) == 0) add_token(T_LBYTEPTR, buffer, line);
+                if(strcasecmp(buffer, HUMAN_AST[0]) == 0) add_token(T_BYTE, buffer, line);
+                else if(strcasecmp(buffer, HUMAN_AST[1]) == 0) add_token(T_BYTEPTR, buffer, line);
+                else if(strcasecmp(buffer, HUMAN_AST[2]) == 0) add_token(T_QWORD, buffer, line);
+                else if(strcasecmp(buffer, HUMAN_AST[3]) == 0) add_token(T_QWORDPTR, buffer, line);
+                else if(strcasecmp(buffer, HUMAN_AST[4]) == 0) add_token(T_DWORD, buffer, line);
+                else if(strcasecmp(buffer, HUMAN_AST[5]) == 0) add_token(T_DWORDPTR, buffer, line);
+                else if(strcasecmp(buffer, HUMAN_AST[6]) == 0) add_token(T_LBYTE, buffer, line);
+                else if(strcasecmp(buffer, HUMAN_AST[7]) == 0) add_token(T_LBYTEPTR, buffer, line);
                 else add_token(T_ID, buffer, line);              
             }
-            else if (strncmp(buff, "resb", 4) == 0){ add_token(T_RESB, buff, line); buff += 4; while (isspace(*buff)) buff++;}
-            else if (strncmp(buff, "resq", 4) == 0){ add_token(T_RESQ, buff, line); buff += 4; while (isspace(*buff)) buff++;}
-            else if (strncmp(buff, "resd", 4) == 0){ add_token(T_RESD, buff, line); buff += 4; while (isspace(*buff)) buff++;}
-            else if (strncmp(buff, "resl", 4) == 0){ add_token(T_RESL, buff, line); buff += 4; while (isspace(*buff)) buff++;}
+            else if (strncasecmp(buff, "resb", 4) == 0){ add_token(T_RESB, buff, line); buff += 4; while (isspace(*buff)) buff++;}
+            else if (strncasecmp(buff, "resq", 4) == 0){ add_token(T_RESQ, buff, line); buff += 4; while (isspace(*buff)) buff++;}
+            else if (strncasecmp(buff, "resd", 4) == 0){ add_token(T_RESD, buff, line); buff += 4; while (isspace(*buff)) buff++;}
+            else if (strncasecmp(buff, "resl", 4) == 0){ add_token(T_RESL, buff, line); buff += 4; while (isspace(*buff)) buff++;}
                 
             else{ fprintf(stderr, "AmmAsm: unvalid syntax or char on line", line); exit(1); }
             buff++;
@@ -634,6 +667,7 @@ typedef enum {
     AST_COMMENT,
     AST_SECTION,
     AST_COMMA,
+    AST_ADDR_EXPR,
     AST_UNKNOWN
 } ASTType;
 
@@ -645,18 +679,19 @@ typedef struct AST {
         struct { char operand1[64]; char operand2[64]; char operand3[64]; char operand4[64]; int oper_count} ins;
         struct { unsigned char data[256]; int size; } u8;
         struct { unsigned char *data[256]; int size; } u8ptr;
-        struct { short data[256]; int size; } u16;
-        struct { short *data[256]; int size; } u16ptr;
-        struct { int data[256]; int size; } u32;
-        struct { int *data[256]; int size; } u32ptr;
-        struct { long data[256]; int size; } u64;
-        struct { long *data[256]; int size; } u64ptr;
+        struct { unsigned char data[256]; int size; } u16;
+        struct { unsigned char *data[256]; int size; } u16ptr;
+        struct { unsigned char data[256]; int size; } u32;
+        struct { unsigned char *data[256]; int size; } u32ptr;
+        struct { unsigned char data[256]; int size; } u64;
+        struct { unsigned char *data[256]; int size; } u64ptr;
         struct { long size; } resb;
         struct { long size; } resq;
         struct { long size; } resd;
         struct { long size; } resl;
         struct { char name[64]; int adress; } label;
         struct { char name[63]; } section;
+        AddrExpr sib;
     };
         unsigned char machine_code[256];
         int machine_code_size;
@@ -867,14 +902,14 @@ AST* PARSE(){
 
             while (pos < toks_count && toks[pos].type != T_EOL && toks[pos].type != T_EOF) {
                 if (toks[pos].type == T_COMMA){ pos++; continue; }
-                if (node.u64.size >= 256){ fprintf(stderr, "AmmAsm: Too many lbytes at line %d\n", toks[pos].line); exit(1);}
+                if (node.u64.size >= 256){ fprintf(stderr, "AmmAsm: Too many u64 at line %d\n", toks[pos].line); exit(1);}
                 if (toks[pos].type == T_INT) {
                     node.u64.data[node.u64.size++] = atoi(toks[pos].value);
                     pc += sizeof(long);
                     pos++;
                 } 
                 else {
-                    fprintf(stderr, "AmmAsm: unexpected token in LBYTE at line %d: '%s'\n", toks[pos].line, toks[pos].value);
+                    fprintf(stderr, "AmmAsm: unexpected token in u64 at line %d: '%s'\n", toks[pos].line, toks[pos].value);
                     exit(1);
                 }
             }
@@ -890,7 +925,7 @@ AST* PARSE(){
             while (pos < toks_count){
                 if(toks[pos].type == T_EOL || toks[pos].type == T_EOF)break;
                 if(toks[pos].type == T_COMMA){ ++pos; continue; }
-                if(node.u64ptr.size >= 256){ fprintf(stderr, "AmmAsm: Too many lbyteptrs at line \"%d\"", toks[pos].line); exit(1);}
+                if(node.u64ptr.size >= 256){ fprintf(stderr, "AmmAsm: Too many u64ptr at line \"%d\"", toks[pos].line); exit(1);}
 
                 if(toks[pos].type == T_ID){
                     node.u64ptr.data[node.u64ptr.size++] = toks[pos].value;
@@ -903,7 +938,7 @@ AST* PARSE(){
                     pos++;
                 }
                 else {
-                    fprintf(stderr, "AmmAsm: expected label name (T_ID) or 0 (NULL) in LBYTEPTRS at line %d\n", toks[pos].line);
+                    fprintf(stderr, "AmmAsm: expected label name (T_ID) or 0 (NULL) in u64ptr at line %d\n", toks[pos].line);
                     exit(1);
                 }
             }
@@ -939,6 +974,22 @@ AST* PARSE(){
             if(pos < toks_count && toks[pos].type == T_EOL) ++pos;
             continue;              
         }
+        // else if(tok->type == T_ADDR_EXPR){
+        //     AST node = { 0 };
+        //     node.ins.oper_count = 0;
+        //     pos++;
+
+        //     unsigned char *new[5];
+        //     for(int i = pos, j = 0; i <= pos+5; i++, j++){
+        //         if(toks[i].type == T_COMMA) continue;
+        //         new[j] = toks[i].value;
+        //     }
+        //     strncpy(toks[])
+
+            
+
+        // }
+
         
 
     }
@@ -949,22 +1000,49 @@ int indexof(char** regs, char* reg){
     if(!is2arrin(regs, reg)) return -1;
 
     return 
-    (!strcmp(reg, "rax") || !strcmp(reg, "r8") || !strcmp(reg, "eax") || !strcmp(reg, "ax") || !strcmp(reg, "al") || !strcmp(reg, "r8d") || !strcmp(reg, "r8w") || !strcmp(reg, "r8b"))      ? 0b000 :
-    (!strcmp(reg, "rcx") || !strcmp(reg, "r9") || !strcmp(reg, "ecx") || !strcmp(reg, "cx") || !strcmp(reg, "cl") || !strcmp(reg, "r9d") || !strcmp(reg, "r9w") || !strcmp(reg, "r9b"))      ? 0b001 :
-    (!strcmp(reg, "rdx") || !strcmp(reg, "r10") || !strcmp(reg, "edx") || !strcmp(reg, "dx") || !strcmp(reg, "dl") || !strcmp(reg, "r10d") || !strcmp(reg, "r10w") || !strcmp(reg, "r10b"))  ? 0b010 :
-    (!strcmp(reg, "rbx") || !strcmp(reg, "r11") || !strcmp(reg, "ebx") || !strcmp(reg, "bx") || !strcmp(reg, "bl") || !strcmp(reg, "r11d") || !strcmp(reg, "r11w") || !strcmp(reg, "r11b"))  ? 0b011 :
-    (!strcmp(reg, "rsp") || !strcmp(reg, "r12") || !strcmp(reg, "esp") || !strcmp(reg, "sp") || !strcmp(reg, "spl") || !strcmp(reg, "r12d") || !strcmp(reg, "r12w") || !strcmp(reg, "r12b")) ? 0b100 :
-    (!strcmp(reg, "rbp") || !strcmp(reg, "r13") || !strcmp(reg, "ebp") || !strcmp(reg, "bp") || !strcmp(reg, "bpl") || !strcmp(reg, "r13d") || !strcmp(reg, "r13w") || !strcmp(reg, "r13b")) ? 0b101 :
-    (!strcmp(reg, "rsi") || !strcmp(reg, "r14") || !strcmp(reg, "esi") || !strcmp(reg, "si") || !strcmp(reg, "sil") || !strcmp(reg, "r14d") || !strcmp(reg, "r14w") || !strcmp(reg, "r14b")) ? 0b110 :
-    (!strcmp(reg, "rdi") || !strcmp(reg, "r15") || !strcmp(reg, "edi") || !strcmp(reg, "di") || !strcmp(reg, "dil") || !strcmp(reg, "r15d") || !strcmp(reg, "r15w") || !strcmp(reg, "r15b")) ? 0b111 : -1;
+    (!strcasecmp(reg, "rax") || !strcasecmp(reg, "r8") || !strcasecmp(reg, "eax") || !strcasecmp(reg, "ax") || !strcasecmp(reg, "al") || !strcasecmp(reg, "r8d") || !strcasecmp(reg, "r8w") || !strcasecmp(reg, "r8b"))      ? 0b000 :
+    (!strcasecmp(reg, "rcx") || !strcasecmp(reg, "r9") || !strcasecmp(reg, "ecx") || !strcasecmp(reg, "cx") || !strcasecmp(reg, "cl") || !strcasecmp(reg, "r9d") || !strcasecmp(reg, "r9w") || !strcasecmp(reg, "r9b"))      ? 0b001 :
+    (!strcasecmp(reg, "rdx") || !strcasecmp(reg, "r10") || !strcasecmp(reg, "edx") || !strcasecmp(reg, "dx") || !strcasecmp(reg, "dl") || !strcasecmp(reg, "r10d") || !strcasecmp(reg, "r10w") || !strcasecmp(reg, "r10b"))  ? 0b010 :
+    (!strcasecmp(reg, "rbx") || !strcasecmp(reg, "r11") || !strcasecmp(reg, "ebx") || !strcasecmp(reg, "bx") || !strcasecmp(reg, "bl") || !strcasecmp(reg, "r11d") || !strcasecmp(reg, "r11w") || !strcasecmp(reg, "r11b"))  ? 0b011 :
+    (!strcasecmp(reg, "rsp") || !strcasecmp(reg, "r12") || !strcasecmp(reg, "esp") || !strcasecmp(reg, "sp") || !strcasecmp(reg, "spl") || !strcasecmp(reg, "r12d") || !strcasecmp(reg, "r12w") || !strcasecmp(reg, "r12b")) ? 0b100 :
+    (!strcasecmp(reg, "rbp") || !strcasecmp(reg, "r13") || !strcasecmp(reg, "ebp") || !strcasecmp(reg, "bp") || !strcasecmp(reg, "bpl") || !strcasecmp(reg, "r13d") || !strcasecmp(reg, "r13w") || !strcasecmp(reg, "r13b")) ? 0b101 :
+    (!strcasecmp(reg, "rsi") || !strcasecmp(reg, "r14") || !strcasecmp(reg, "esi") || !strcasecmp(reg, "si") || !strcasecmp(reg, "sil") || !strcasecmp(reg, "r14d") || !strcasecmp(reg, "r14w") || !strcasecmp(reg, "r14b")) ? 0b110 :
+    (!strcasecmp(reg, "rdi") || !strcasecmp(reg, "r15") || !strcasecmp(reg, "edi") || !strcasecmp(reg, "di") || !strcasecmp(reg, "dil") || !strcasecmp(reg, "r15d") || !strcasecmp(reg, "r15w") || !strcasecmp(reg, "r15b")) ? 0b111 : -1;
 }
 
 int find_reg64_index(const char* reg) {
     for (int i=0; i<8; i++) {
-        if (strcmp(regs64[i], reg) == 0) return i;
+        if (strcasecasecmp(regs64[i], reg) == 0) return i;
     }
     for (int i=0; i<8; i++) {
-        if (strcmp(regs64GP[i], reg) == 0) return i + 8;
+        if (strcasecasecmp(regs64GP[i], reg) == 0) return i + 8;
+    }
+    return -1;
+}
+int find_reg32_index(const char* reg) {
+    for (int i=0; i<8; i++) {
+        if (strcasecasecmp(regs32[i], reg) == 0) return i;
+    }
+    for (int i=0; i<8; i++) {
+        if (strcasecasecmp(regs32GP[i], reg) == 0) return i + 8;
+    }
+    return -1;
+}
+int find_reg16_index(const char* reg) {
+    for (int i=0; i<8; i++) {
+        if (strcasecasecmp(regs16[i], reg) == 0) return i;
+    }
+    for (int i=0; i<8; i++) {
+        if (strcasecasecmp(regs16GP[i], reg) == 0) return i + 8;
+    }
+    return -1;
+}
+int find_reg8_index(const char* reg) {
+    for (int i=0; i<8; i++) {
+        if (strcasecmp(regs8[i], reg) == 0) return i;
+    }
+    for (int i=0; i<8; i++) {
+        if (strcasecmp(regs8GP[i], reg) == 0) return i + 8;
     }
     return -1;
 }
@@ -1030,14 +1108,14 @@ The parser:
 ===============================================================================
 */
 
-
-typedef enum { TOK_BREG, TOK_IREG, TOK_NUM, TOK_PLUS, TOK_STAR, TOK_MINUS, TOK_SLASH, TOK_LPAREN, TOK_RPAREN, TOK_END, TOK_UNKNOW } TokenType;
+#define SKIP_SP while(isspace(*p++));
 
 typedef struct {
-    TokenType type;
+// mov [rbx + rcx * 8 + 0x10], rax 
+
     // base reg conf
     int base_is_reg;
-    long base_val;   // number? -> adress
+    long base_val;
     char base_reg[8];
 
     // index conf
@@ -1046,95 +1124,116 @@ typedef struct {
     char index_reg[8];
 
     int scale;       // 1, 2, 4, 8 (x86_64)
-    unsigned char plus, minus, star, slash, lparen, rparen, end;
 } AddrExpr;
 
-AddrExpr addrtoks[128] = { 0 };
-uint8_t addrcount = 0;
 
-void lex_addr_expr_long_mode(const char* expr, int line){
-    "rax+(10*8)"; // example of expr
-    const char *cp = expr;
-    char basereg[10] = {0}; int bri = 0;
-    char indexreg[10]= {0}; int idi = 0; 
-    int number[256] = {0}; int ni  = 0;
+// this function will return 1 fully parsed addexpr for sib_gen_byte() 
+// parsing only LM registers
+AddrExpr parse_addr_expr(const char* expr , int line) {
+    AddrExpr new = { 0 };
+    new.scale = 1; // base value
+    const char *p = expr;
+    uint8_t find_b = 0, find_i = 0, find_s = 0, find_d = 0;
 
-    while(cp != (void*)0 && *cp != '\0'){
-        if(strncmp(cp, "%%%%", 2)){ // expecting base reg
-            cp++; 
-            while(*cp && isalpha(*cp) && bri < (int)(sizeof(basereg) - 1)){
-                basereg[bri++] = *cp;
-                cp++;
-            }
-            addrtoks[addrcount++].base_is_reg = 1;
-            addrtoks[addrcount++].type = TOK_BREG;
-            strncpy(addrtoks[addrcount++].base_reg, basereg, sizeof(addrtoks[addrcount++].base_reg));
-            ;
-        }
-        else if(*cp == '%'){        // expecting index reg
-            cp++;
-            while(*cp && isalpha(*cp) && idi < (int)(sizeof(indexreg) - 1)){
-                indexreg[idi++] = *cp;
-                cp++;
-            }
-            addrtoks[addrcount++].index_exists = 1;
-            addrtoks[addrcount++].type = TOK_IREG;
-            strncpy(addrtoks[addrcount++].index_reg, indexreg, sizeof(addrtoks[addrcount++].index_reg));
-            ;
-        }
-        else if(*cp == '+'){ addrtoks[addrcount++].type = TOK_PLUS;  addrtoks[addrcount++].plus   = '+';  }
-        else if(*cp == '-'){ addrtoks[addrcount++].type = TOK_MINUS; addrtoks[addrcount++].minus  = '-';  }
-        else if(*cp == '*'){ addrtoks[addrcount++].type = TOK_STAR;  addrtoks[addrcount++].star   = '*';  }
-        else if(*cp == '/'){ addrtoks[addrcount++].type = TOK_SLASH; addrtoks[addrcount++].slash  = '/';  }
-        else if(*cp == '('){ addrtoks[addrcount++].type = TOK_LPAREN;addrtoks[addrcount++].lparen = '(';  }
-        else if(*cp == ')'){ addrtoks[addrcount++].type = TOK_RPAREN;addrtoks[addrcount++].rparen = ')';  }
+    while (*p) {
+        SKIP_SP
 
-        else if(isdigit(*cp)){
-            while((*cp && isdigit(*cp) && ni < (int)(sizeof(number) - 1)) || *cp == 'x' || *cp == 'X'){
-                number[ni++] = *cp;
-                cp++;
+        if (*p == 'b') {
+            find_b = 1;
+            p++; SKIP_SP
+            if (*p == '=') {
+                p++; SKIP_SP
+                int i = 0;
+                while (*p && *p != ',' && !isspace(*p)) {
+                    new.base_reg[i++] = *p++;
+                }
+                new.base_reg[i] = '\0';
+                new.base_is_reg = 1;
             }
-            addrtoks[addrcount++].type = TOK_NUM;
         }
-        else{ fprintf(stderr, "AmmAsm: Unknow simbol in SIB on line '%d'", line); exit(1);}
+        else if (*p == 'i') {
+            find_i = 1;
+            p++; SKIP_SP
+            if (*p == '=') {
+                p++; SKIP_SP
+                int i = 0;
+                while (*p && *p != ',' && !isspace(*p)) {
+                    new.index_reg[i++] = *p++;
+                }
+                new.index_reg[i] = '\0';
+                new.index_exists = 1;
+            }
+        }
+        else if (*p == 's') {
+            find_s = 1;
+            p++; SKIP_SP
+            if (*p == '=') {
+                p++; SKIP_SP
+                new.scale = atoi(p);
+                while (*p && isdigit(*p)) p++;
+            }
+        }
+        else if (*p == 'd') {
+            find_d = 1;
+            p++; SKIP_SP
+            if (*p == '=') {
+                p++; SKIP_SP
+                if (*p == '0' && *(p+1) == 'x') {
+                    new.disp_val = strtol(p, (char**)&p, 16);
+                }
+                else if (*p == '0' && *(p+1) == 'o') {
+                    new.disp_val = strtol(p+2, (char**)&p, 8);
+                }
+                else if (*p == '0' && *(p+1) == 'b') {
+                    new.disp_val = strtol(p+2, (char**)&p, 2);
+                }
+                else {
+                    new.disp_val = strtol(p, (char**)&p, 10);
+                }
+            }
+        }
+
+        ;p++;
     }
-    addrtoks[addrcount++].type = TOK_END;
-    addrtoks[addrcount++].end  = 255; // lol
+
+    if (new.scale && !new.index_exists) {
+        fprintf(stderr, "AmmAsm: Line %d: scale used without index register\n", line);
+        exit(1);
+    }
+
+    if (new.index_exists && strcasecmp(new.index_reg, "rsp") == 0) {
+        fprintf(stderr, "AmmAsm: Line %d: rsp cannot be used as index register\n", line);
+        exit(1);
+    }
+
+    if (new.scale && !(new.scale == 1 || new.scale == 2 || new.scale == 4 || new.scale == 8)) {
+        fprintf(stderr, "AmmAsm: Line %d: invalid scale factor %d (must be 1,2,4,8)\n", line, new.scale);
+        exit(1);
+    }
+
+    if (!new.base_is_reg && !new.index_exists && !find_d) {
+        fprintf(stderr, "AmmAsm: Line %d: addressing mode must have at least base, index or displacement\n", line);
+        exit(1);
+    }
+
+    if (new.base_is_reg && strlen(new.base_reg) > 4) {
+        fprintf(stderr, "AmmAsm: Line %d: invalid base register name '%s'\n", line, new.base_reg);
+        exit(1);
+    }
+
+    if (new.index_exists && strlen(new.index_reg) > 4) {
+        fprintf(stderr, "AmmAsm: Line %d: invalid index register name '%s'\n", line, new.index_reg);
+        exit(1);
+    }
+
+
+    return new;
 }
 
-// this function will return 1 fully parsed addexpr for sib_gen_byte()
-AddrExpr parse_addr_expr(const char *expr, int line) {
-    lex_addr_expr_long_mode(expr, line);
-    int pos = 0;
-    AddrExpr out = { 0 };
-
-    while(addrtoks[pos].type != TOK_END && addrtoks[pos].end != 255){
-        if(addrtoks[pos].type == TOK_BREG){
-            if(is_reg(addrtoks[pos++].base_reg) < 3){ fprintf(stderr, "AmmAsm: unvalid base register on line %d", line); exit(1);}
-            if(addrtoks[pos].type == TOK_PLUS || addrtoks[pos].type == TOK_MINUS){
-                if(!(addrtoks[pos+1].type == TOK_IREG) || !(addrtoks[pos+1].type == TOK_NUM)){
-                    fprintf(stderr, "AmmAsm: unvalid token after base register at line '%d'", line); exit(1);
-                }
-                else{
-                    if(addrtoks[pos+1].type == TOK_IREG){
-                        out.index_exists = 1;
-                        strncpy(out.index_reg, addrtoks[pos+1].index_reg, sizeof(out.index_reg));
-                    }
-                    else if(addrtoks[pos+1].type == TOK_NUM){      // disp
-                        
-                    }
-                }
-            }
-                
-        }
-    }
-
-
-};
 
 uint8_t gen_SIB_byte(AddrExpr input) {
-    uint8_t scale_bits = 0;
-    uint8_t index_bits = 4; // 0b100 = no index
+    uint8_t scale_bits = 0b00;
+    uint8_t index_bits = 4; // 0b100 = no index(rsp/r12)
     uint8_t base_bits  = 5; // 0b101 = disp32 only
 
     // 1. Scale
@@ -1143,26 +1242,23 @@ uint8_t gen_SIB_byte(AddrExpr input) {
         case 2: scale_bits = 0b01; break;
         case 4: scale_bits = 0b10; break;
         case 8: scale_bits = 0b11; break;
-        default:exit(1);
     }
 
     // 2. Index
     if (input.index_exists) {
         index_bits = find_reg64_index(input.index_reg);
-        if (index_bits == 4) // RSP/R12 special case: means "no index"
-            index_bits = 4;
-    } else if (input.scale > 1) {
-        // DISP * SCALE, index=no index
-        index_bits = 4;
-    }
+
+    } 
 
     // 3. Base
     if (input.base_is_reg) {
         base_bits = find_reg64_index(input.base_reg);
-    } else if (input.base_val) {
+    } 
+    else if (input.base_val) {
         base_bits = 5; // disp32 only
     }
 
+    // sib byte
     return (scale_bits << 6) | (index_bits << 3) | base_bits;
 }
 
@@ -1172,7 +1268,7 @@ uint8_t gen_SIB_byte(AddrExpr input) {
 #define REX_X     0b00000010
 #define REX_B     0b00000001
 
-void parseInst(AST* node, int* pc) {
+void parseInst(AST* node, int* pc, int line) {
     if (node->type != AST_INS) return;
 
     memset(node->machine_code, 0, sizeof(node->machine_code));
@@ -1213,7 +1309,7 @@ void parseInst(AST* node, int* pc) {
     - Registers numbered 8..15 require setting corresponding R or B bits in REX.
     - X bit = 0 here (no SIB used).
     */
-    if (strcmp(node->cmd, "mov") == 0) {
+    if (strcasecmp(node->cmd, "mov") == 0) {
         // MOV R64, IMMU64
         if ((is2arrin(regs64, node->ins.operand1) || is2arrin(regs64GP, node->ins.operand1)) 
             && is_literal(node->ins.operand2)) {
@@ -1256,7 +1352,7 @@ void parseInst(AST* node, int* pc) {
             uint8_t rex = REX_BASE | REX_W; // 64-bit operation
             uint8_t opcode = 0x89; // MOV r/m64, r64
             uint8_t modrm = 0b11000000; // mod = 11 (register addressing mode)
-
+// mod | src | dest
             int dst_index = indexof(regs64, node->ins.operand1);
             if (dst_index == -1) {
                 dst_index = indexof(regs64GP, node->ins.operand1);
@@ -1491,6 +1587,468 @@ void parseInst(AST* node, int* pc) {
             *pc += node->machine_code_size;
             *s = node->machine_code_size;
             return;
+        }
+        // MOV R64, [ADDR]
+        else if ((is2arrin(regs64, node->ins.operand1) || is2arrin(regs64GP, node->ins.operand1)) &&
+                node->type == AST_ADDR_EXPR) {
+
+            AddrExpr parsed = parse_addr_expr(node->ins.operand2, line);
+            uint8_t rex = REX_BASE | REX_W; // 64-bit
+            uint8_t opcode = 0x8B; // MOV r64, r/m64
+            uint8_t modrm = 0;
+            uint8_t sib = 0;
+            int disp_size = 0;
+            int pos = 0;
+
+
+            int reg_index = find_reg64_index(node->ins.operand1);
+            if (reg_index >= 8) rex |= REX_R; 
+
+            uint8_t mod_bits = 0;
+            uint8_t rm_bits = 0;
+            
+            if (parsed.base_is_reg) {
+                rm_bits = find_reg64_index(parsed.base_reg);
+                
+                // Special case: RBP/R13
+                if (rm_bits == 5) { // RBP/R13
+                    if (parsed.disp_val == 0) {
+                        mod_bits = 0b01; // disp8 
+                        disp_size = 1;
+                    } 
+                    else if (parsed.disp_val >= -128 && parsed.disp_val <= 127) {
+                        mod_bits = 0b01; // disp8
+                        disp_size = 1;
+                    } 
+                    else {
+                        mod_bits = 0b10; // disp32
+                        disp_size = 4;
+                    }
+                }
+                else if (parsed.disp_val == 0 && !parsed.index_exists) {
+                    mod_bits = 0b00; // no displacement
+                }
+                else if (parsed.disp_val >= -128 && parsed.disp_val <= 127) {
+                    mod_bits = 0b01; // disp8
+                    disp_size = 1;
+                } 
+                else {
+                    mod_bits = 0b10; // disp32
+                    disp_size = 4;
+                }
+            } 
+            else {
+                // [imm32]
+                mod_bits = 0b00;
+                rm_bits = 0b101; // means SIB with base=0 or pure disp32
+                disp_size = 0b100;
+            }
+
+            int need_sib = 0;
+            if (parsed.index_exists) {
+                need_sib = 1;
+            } 
+            else if (rm_bits == 0b100) { // RSP/R12 need SIB if useing index or scale
+                need_sib = 1;
+            } 
+            else if (!parsed.base_is_reg) { 
+                need_sib = 1;
+            }
+
+            if (need_sib) {
+                sib = gen_SIB_byte(parsed);
+                rm_bits = 0b100; 
+            }
+
+
+            modrm = (mod_bits << 6) | ((reg_index & 7) << 3) | (rm_bits & 7);
+
+            node->machine_code[pos++] = rex;
+            node->machine_code[pos++] = opcode;
+            node->machine_code[pos++] = modrm;
+            
+            if (need_sib) node->machine_code[pos++] = sib;
+            if (disp_size == 1) node->machine_code[pos++] = (uint8_t)parsed.disp_val;
+             
+            else if (disp_size == 0b100) {
+                As32(parsed.disp_val, &node->machine_code[pos]);
+                pos += 4;
+            }
+
+            node->machine_code_size = pos;
+            *pc += pos;
+        }
+        // MOV r/m64, r64
+        else if ((is2arrin(regs64, node->ins.operand2) || is2arrin(regs64GP, node->ins.operand2)) &&
+                node->type == AST_ADDR_EXPR) {
+
+            AddrExpr parsed = parse_addr_expr(node->ins.operand2, line);
+            uint8_t rex = REX_BASE | REX_W; // 64-bit
+            uint8_t opcode = 0x89; // MOV r/m64, r64 
+            uint8_t modrm = 0;
+            uint8_t sib = 0;
+            int disp_size = 0;
+            int pos = 0;
+
+
+            int reg_index = find_reg64_index(node->ins.operand2);
+            if (reg_index >= 8) rex |= REX_B; 
+
+            uint8_t mod_bits = 0;
+            uint8_t rm_bits = 0;
+            
+            if (parsed.base_is_reg) {
+                rm_bits = find_reg64_index(parsed.base_reg);
+                
+                // Special case: RBP/R13
+                if (rm_bits == 5) { // RBP/R13
+                    if (parsed.disp_val == 0) {
+                        mod_bits = 0b01; // disp8 
+                        disp_size = 1;
+                    } 
+                    else if (parsed.disp_val >= -128 && parsed.disp_val <= 127) {
+                        mod_bits = 0b01; // disp8
+                        disp_size = 1;
+                    } 
+                    else {
+                        mod_bits = 0b10; // disp32
+                        disp_size = 4;
+                    }
+                }
+                else if (parsed.disp_val == 0 && !parsed.index_exists) {
+                    mod_bits = 0b00; // no displacement
+                }
+                else if (parsed.disp_val >= -128 && parsed.disp_val <= 127) {
+                    mod_bits = 0b01; // disp8
+                    disp_size = 1;
+                } 
+                else {
+                    mod_bits = 0b10; // disp32
+                    disp_size = 4;
+                }
+            } 
+            else {
+                // [imm32]
+                mod_bits = 0b00;
+                rm_bits = 0b101; // means SIB with base=0 or pure disp32
+                disp_size = 0b100;
+            }
+
+            int need_sib = 0;
+            if (parsed.index_exists) {
+                need_sib = 1;
+            } 
+            else if (rm_bits == 0b100) { // RSP/R12 need SIB if useing index or scale
+                need_sib = 1;
+            } 
+            else if (!parsed.base_is_reg) { 
+                need_sib = 1;
+            }
+
+            if (need_sib) {
+                sib = gen_SIB_byte(parsed);
+                rm_bits = 0b100; 
+            }
+
+
+            modrm = (mod_bits << 6) | ((reg_index & 7) << 3) | (rm_bits & 7);
+
+            node->machine_code[pos++] = rex;
+            node->machine_code[pos++] = opcode;
+            node->machine_code[pos++] = modrm;
+            
+            if (need_sib) node->machine_code[pos++] = sib;
+            if (disp_size == 1) node->machine_code[pos++] = (uint8_t)parsed.disp_val;
+             
+            else if (disp_size == 0b100) {
+                As32(parsed.disp_val, &node->machine_code[pos]);
+                pos += 4;
+            }
+
+            node->machine_code_size = pos;
+            *pc += pos;
+        }
+        // mov r32, r/m
+        else if(node->type == AST_ADDR_EXPR && 
+                (is2arrin(regs32, node->ins.operand1) || is2arrin(regs32GP, node->ins.operand1))){
+            AddrExpr parsed = parse_addr_expr(node->ins.operand2, line);
+            uint8_t rex = REX_BASE; // 32-bit
+            uint8_t opcode = 0x8B; // MOV r/m, r32  
+            uint8_t modrm = 0;
+            uint8_t sib = 0;
+            int disp_size = 0;
+            int pos = 0;
+
+
+            int reg_index = find_reg32_index(node->ins.operand2);
+            if (reg_index >= 8) rex |= REX_B; 
+
+            uint8_t mod_bits = 0;
+            uint8_t rm_bits = 0;
+            
+            if (parsed.base_is_reg) {
+                rm_bits = find_reg32_index(parsed.base_reg);
+                
+                // Special case: RBP/R13
+                if (rm_bits == 5) { // RBP/R13
+                    if (parsed.disp_val == 0) {
+                        mod_bits = 0b01; // disp8 
+                        disp_size = 1;
+                    } 
+                    else if (parsed.disp_val >= -128 && parsed.disp_val <= 127) {
+                        mod_bits = 0b01; // disp8
+                        disp_size = 1;
+                    } 
+                    else {
+                        mod_bits = 0b10; // disp32
+                        disp_size = 4;
+                    }
+                }
+                else if (parsed.disp_val == 0 && !parsed.index_exists) {
+                    mod_bits = 0b00; // no displacement
+                }
+                else if (parsed.disp_val >= -128 && parsed.disp_val <= 127) {
+                    mod_bits = 0b01; // disp8
+                    disp_size = 1;
+                } 
+                else {
+                    mod_bits = 0b10; // disp32
+                    disp_size = 4;
+                }
+            } 
+            else {
+                // [imm32]
+                mod_bits = 0b00;
+                rm_bits = 0b101; // means SIB with base=0 or pure disp32
+                disp_size = 0b100;
+            }
+
+            int need_sib = 0;
+            if (parsed.index_exists) {
+                need_sib = 1;
+            } 
+            else if (rm_bits == 0b100) { // RSP/R12 need SIB if useing index or scale
+                need_sib = 1;
+            } 
+            else if (!parsed.base_is_reg) { 
+                need_sib = 1;
+            }
+
+            if (need_sib) {
+                sib = gen_SIB_byte(parsed);
+                rm_bits = 0b100; 
+            }
+
+
+            modrm = (mod_bits << 6) | ((reg_index & 7) << 3) | (rm_bits & 7);
+
+            node->machine_code[pos++] = rex;
+            node->machine_code[pos++] = opcode;
+            node->machine_code[pos++] = modrm;
+            
+            if (need_sib) node->machine_code[pos++] = sib;
+            if (disp_size == 1) node->machine_code[pos++] = (uint8_t)parsed.disp_val;
+             
+            else if (disp_size == 0b100) {
+                As32(parsed.disp_val, &node->machine_code[pos]);
+                pos += 4;
+            }
+
+            node->machine_code_size = pos;
+            *pc += pos;
+        }
+        // mov r16, r/m
+        else if(node->type == AST_ADDR_EXPR && 
+                (is2arrin(regs16, node->ins.operand1) || is2arrin(regs16GP, node->ins.operand1))){
+            AddrExpr parsed = parse_addr_expr(node->ins.operand2, line);
+            uint8_t rex = REX_BASE;
+            uint8_t prefix = 0x66;
+            uint8_t opcode = 0x8B; // MOV r/m, r32  
+            uint8_t modrm = 0;
+            uint8_t sib = 0;
+            int disp_size = 0;
+            int pos = 0;
+
+
+            int reg_index = find_reg16_index(node->ins.operand2);
+            if (reg_index >= 8) rex |= REX_B; 
+
+            uint8_t mod_bits = 0;
+            uint8_t rm_bits = 0;
+            
+            if (parsed.base_is_reg) {
+                rm_bits = find_reg16_index(parsed.base_reg);
+                
+                // Special case: RBP/R13
+                if (rm_bits == 5) { // RBP/R13
+                    if (parsed.disp_val == 0) {
+                        mod_bits = 0b01; // disp8 
+                        disp_size = 1;
+                    } 
+                    else if (parsed.disp_val >= -128 && parsed.disp_val <= 127) {
+                        mod_bits = 0b01; // disp8
+                        disp_size = 1;
+                    } 
+                    else {
+                        mod_bits = 0b10; // disp32
+                        disp_size = 4;
+                    }
+                }
+                else if (parsed.disp_val == 0 && !parsed.index_exists) {
+                    mod_bits = 0b00; // no displacement
+                }
+                else if (parsed.disp_val >= -128 && parsed.disp_val <= 127) {
+                    mod_bits = 0b01; // disp8
+                    disp_size = 1;
+                } 
+                else {
+                    mod_bits = 0b10; // disp32
+                    disp_size = 4;
+                }
+            } 
+            else {
+                // [imm32]
+                mod_bits = 0b00;
+                rm_bits = 0b101; // means SIB with base=0 or pure disp32
+                disp_size = 0b100;
+            }
+
+            int need_sib = 0;
+            if (parsed.index_exists) {
+                need_sib = 1;
+            } 
+            else if (rm_bits == 0b100) { // RSP/R12 need SIB if useing index or scale
+                need_sib = 1;
+            } 
+            else if (!parsed.base_is_reg) { 
+                need_sib = 1;
+            }
+
+            if (need_sib) {
+                sib = gen_SIB_byte(parsed);
+                rm_bits = 0b100; 
+            }
+
+
+            if (need_sib) rm_bits = 0b100;
+
+            modrm = (mod_bits << 6) | ((reg_index & 7) << 3) | (rm_bits & 7);
+
+            node->machine_code[pos++] = prefix;   // 0x66 for r16
+            node->machine_code[pos++] = rex;      // REX 
+            node->machine_code[pos++] = opcode;   // 0x8B
+
+            node->machine_code[pos++] = modrm;    
+            if (need_sib) node->machine_code[pos++] = sib; 
+
+            if (disp_size == 1)
+                node->machine_code[pos++] = (uint8_t)parsed.disp_val;
+            else if (disp_size == 0b100) {
+                As32(parsed.disp_val, &node->machine_code[pos]);
+                pos += 4;
+            }
+        }
+        // mov r8, r/m
+        else if(node->type == AST_ADDR_EXPR && 
+                (is2arrin(regs8, node->ins.operand1) || is2arrin(regs8GP, node->ins.operand1))){
+            AddrExpr parsed = parse_addr_expr(node->ins.operand2, line);
+            uint8_t rex = REX_BASE; // 32-bit
+            uint8_t opcode = 0x8A; // MOV r/m, r8
+            uint8_t modrm = 0;
+            uint8_t sib = 0;
+            int disp_size = 0;
+            int pos = 0;
+
+
+            int reg_index = find_reg8_index(node->ins.operand2);
+            if (reg_index >= 8) rex |= REX_B; 
+
+            uint8_t mod_bits = 0;
+            uint8_t rm_bits = 0;
+            
+            if (parsed.base_is_reg) {
+                rm_bits = find_reg8_index(parsed.base_reg);
+                
+                // Special case: RBP/R13
+                if (rm_bits == 5) { // RBP/R13
+                    if (parsed.disp_val == 0) {
+                        mod_bits = 0b01; // disp8 
+                        disp_size = 1;
+                    } 
+                    else if (parsed.disp_val >= -128 && parsed.disp_val <= 127) {
+                        mod_bits = 0b01; // disp8
+                        disp_size = 1;
+                    } 
+                    else {
+                        mod_bits = 0b10; // disp32
+                        disp_size = 4;
+                    }
+                }
+                else if (parsed.disp_val == 0 && !parsed.index_exists) {
+                    mod_bits = 0b00; // no displacement
+                }
+                else if (parsed.disp_val >= -128 && parsed.disp_val <= 127) {
+                    mod_bits = 0b01; // disp8
+                    disp_size = 1;
+                } 
+                else {
+                    mod_bits = 0b10; // disp32
+                    disp_size = 4;
+                }
+            } 
+            else {
+                // [imm32]
+                mod_bits = 0b00;
+                rm_bits = 0b101; // means SIB with base=0 or pure disp32
+                disp_size = 0b100;
+            }
+
+            int need_sib = 0;
+            if (parsed.index_exists) {
+                need_sib = 1;
+            } 
+            else if (rm_bits == 0b100) { // RSP/R12 need SIB if useing index or scale
+                need_sib = 1;
+            } 
+            else if (!parsed.base_is_reg) { 
+                need_sib = 1;
+            }
+
+            if (need_sib) {
+                sib = gen_SIB_byte(parsed);
+                rm_bits = 0b100; 
+            }
+
+
+            modrm = (mod_bits << 6) | ((reg_index & 7) << 3) | (rm_bits & 7);
+
+            node->machine_code[pos++] = rex;
+            node->machine_code[pos++] = opcode;
+            node->machine_code[pos++] = modrm;
+            
+            if (need_sib) node->machine_code[pos++] = sib;
+            if (disp_size == 1) node->machine_code[pos++] = (uint8_t)parsed.disp_val;
+             
+            else if (disp_size == 0b100) {
+                As32(parsed.disp_val, &node->machine_code[pos]);
+                pos += 4;
+            }
+
+            node->machine_code_size = pos;
+            *pc += pos;
+        }
+        // MOV r/m, immN
+        else if(node->type == AST_ADDR_EXPR && is_literal(node->ins.operand2)){
+            uint8_t scale = 0b00;
+            uint64_t imm; 
+            if(node->ins.operand2[0] == '0' && node->ins.operand2[1] == 'x') imm = strtol(&node->ins.operand2[2], NULL, 16);
+            if(imm <= 0xFF)                    scale = 0b00; // 1
+            else if(imm <= 0xFFFF)             scale = 0b01; // 2
+            else if(imm <= 0xFFFFFFFF)         scale = 0b10; // 4
+            else if(imm <= 0xFFFFFFFFFFFFFFFF) scale = 0b11; // 8
+            uint8_t MODrm = 0;
+            uint8_t SIB;
+
         }
     }
 
