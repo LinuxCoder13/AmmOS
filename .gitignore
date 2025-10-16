@@ -1,2 +1,4 @@
 .vscode/
-
+# Build artifacts
+objfiles/
+Amm2OS/Amm2OS.iso

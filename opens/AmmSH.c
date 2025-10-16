@@ -117,17 +117,17 @@ int variable_initialization(char* name, char* value, int type){
 }
 
 
-int reval_var(char* name, char* value, char* operator){
+int reval_var(char* name, char* value, char* operator) {
     int i, j;
-    int anoter_var_value = 20000001; // error code
-
-    // eroor code 60 - means that user try inc string
+    int another_var_value = 0;
+    int found = 0;          
 
     if (value[0] == '$') {
         removen(value, 1); 
         for (j = 0; j < var_count; j++) {
             if (astrcmp(vars[j].varname, value) == 0) {
-                anoter_var_value = vars[j].i;
+                another_var_value = vars[j].i;
+                found = 1;
                 break;
             }
         }
@@ -139,32 +139,33 @@ int reval_var(char* name, char* value, char* operator){
             int type = tmp->type;
 
             if (astrcmp(operator, "=") == 0) {
-                if (value && value[0] == '$' && anoter_var_value != 20000001)
-                    tmp->i = anoter_var_value;
+                if (value && value[0] == '$' && found)
+                    tmp->i = another_var_value;
                 else if (type == INT) tmp->i = atoi(value);
                 else if (type == CHAR) tmp->c = value[0];
                 else if (type == STRING) strncpy(tmp->s, value, 26);
             }
 
             else if (astrcmp(operator, "+=") == 0) {
-                if (type != INT) return 60;
-                tmp->i += (value[0] == '$' && anoter_var_value != 20000001)
-                          ? anoter_var_value
+                if (type != INT) return 60; 
+                tmp->i += (value[0] == '$' && found)
+                          ? another_var_value
                           : atoi(value);
             }
 
             else if (astrcmp(operator, "-=") == 0) {
-                if (type != INT) return 60;
-                tmp->i -= (value[0] == '$' && anoter_var_value != 20000001)
-                          ? anoter_var_value
+                if (type != INT) return 60;  
+                tmp->i -= (value[0] == '$' && found)
+                          ? another_var_value
                           : atoi(value);
             }
-            return 1;
+            return 1; 
         }
     }
 
-    return 0;
+    return 0; 
 }
+
 
 
 // with out \n
