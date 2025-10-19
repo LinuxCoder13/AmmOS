@@ -280,13 +280,13 @@ int is_inst(char* s){
 }
 
 // Compare n bytes of s and CMDS[i]
-int is_inst_n(const char* s, int n){
-    int i = 0;
-    int j = n;
-    for(i, j; *s && CMDS[i]; i++, ++j){
+// int is_inst_n(const char* s, int n){
+//     int i = 0;
+//     int j = n;
+//     for(i, j; *s && CMDS[i]; i++, ++j){
 
-    }
-}
+//     }
+// }
 
 int is_reg(const char *s) __attribute__((__nonnull__(1)));
 int is_reg(const char *s){
@@ -399,7 +399,6 @@ int LEXER(FILE* fl) {
         fprintf(stderr, "AmmAsm:\033[;31m Fatal: no such file or dir\033[0m\n");
         exit(1);
     }
-// НЕ УМЕЕТ ПРАВИЛЬНО ПАРСИТЬ ИНСТРУКЦИИ!!!!!
     Lexer lexer = {0};
     int line = 0;
     int in_comment = 0;
