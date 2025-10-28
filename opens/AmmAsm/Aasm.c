@@ -170,19 +170,23 @@ typedef struct {
     char labelscope[256]; 
 } Lexer;
 
-
-AST ast[MAX_TOKENS];
-int ast_count = 0;
-
-
-
 const char *p;
 
 
-int isin(char *str, char c){ for(int i=0; *str != '\0'; i++) if((*str + i) == c) return 1; return 0;}
-int is2arrin(char *str[], char *str2){ for(int i=0; str[i] != NULL; ++i) if(strcasecmp(str[i], str2) == 0) return 1; return 0;}
+int isin(const char *str, char c){ 
+    for(int i = 0; str[i] != '\0'; i++)
+        if(str[i] == c) return 1;
+    return 0;
+}
 
+int is2arrin(const char *str[], char *str2){ 
+    for(int i=0; str[i] != NULL; ++i) 
+        if(strcasecmp(str[i], str2) == 0) 
+            return 1; 
+    return 0;
+}
 
+long parse_expr(); // for gcc to escape conflicting types
 
 long parse_number() {
     while (isspace(*p)) p++;
@@ -279,14 +283,46 @@ int is_inst(char* s){
     return 0;
 }
 
-// Compare n bytes of s and CMDS[i]
-// int is_inst_n(const char* s, int n){
-//     int i = 0;
-//     int j = n;
-//     for(i, j; *s && CMDS[i]; i++, ++j){
+void DEBUG_PRINT_TOKENS() {
+    printf("=== TOKENS DUMP (%d tokens) ===\n", toks_count);
+    for (int i = 0; i < toks_count; i++) {
+        const char* type_str = "UNKNOWN";
+        switch(toks[i].type) {
+            case T_INS: type_str = "T_INS"; break;
+            case T_INT: type_str = "T_INT"; break;
+            case T_LAB: type_str = "T_LAB"; break;
+            case T_REG8: type_str = "T_REG8"; break;
+            case T_REG16: type_str = "T_REG16"; break;
+            case T_REG32: type_str = "T_REG32"; break;
+            case T_REG64: type_str = "T_REG64"; break;
+            case T_ADDR_EXPR: type_str = "T_ADDR_EXPR"; break;
+            case T_ID: type_str = "T_ID"; break;
+            case T_STR: type_str = "T_STR"; break;
+            case T_EOL: type_str = "T_EOL"; break;
+            case T_EOF: type_str = "T_EOF"; break;
+            case T_SEC: type_str = "T_SEC"; break;
+            case T_BYTE: type_str = "T_BYTE"; break;
+            case T_BYTEPTR: type_str = "T_BYTEPTR"; break;
+            case T_QWORD: type_str = "T_QWORD"; break;
+            case T_QWORDPTR: type_str = "T_QWORDPTR"; break;
+            case T_DWORD: type_str = "T_DWORD"; break;
+            case T_DWORDPTR: type_str = "T_DWORDPTR"; break;
+            case T_LBYTE: type_str = "T_LBYTE"; break;
+            case T_LBYTEPTR: type_str = "T_LBYTEPTR"; break;
+            case T_CHAR: type_str = "T_CHAR"; break;
+            case T_COMMA: type_str = "T_COMMA"; break;
+            case T_RESB: type_str = "T_RESB"; break;
+            case T_RESQ: type_str = "T_RESQ"; break;
+            case T_RESD: type_str = "T_RESD"; break;
+            case T_RESL: type_str = "T_RESL"; break;
+        }
+        
+        printf("Token[%d]: type=%-12s value='%s' line=%d\n", 
+               i, type_str, toks[i].value ? toks[i].value : "(null)", toks[i].line);
+    }
+    printf("=== END TOKENS ===\n\n");
+}
 
-//     }
-// }
 
 int is_reg(const char *s) __attribute__((__nonnull__(1)));
 int is_reg(const char *s){
@@ -368,13 +404,13 @@ int strlchar(const char *s, int size, char c) {
 /* littel endian */
 
 // 16-bit
-void As16(short a, unsigned char out[2]) {
+void As16(uint16_t a, unsigned char out[2]) {
     out[0] = a & 0xff;
     out[1] = (a >> 8) & 0xff;
 }
 
 // 32-bit
-void As32(int a, unsigned char out[4]) {
+void As32(uint32_t a, unsigned char out[4]) {
     out[0] = a & 0xff;
     out[1] = (a >> 8) & 0xff;
     out[2] = (a >> 16) & 0xff;
@@ -382,7 +418,7 @@ void As32(int a, unsigned char out[4]) {
 }
 
 // 64-bit
-void As64(long long a, unsigned char out[8]) {
+void As64(uint64_t a, unsigned char out[8]) {
     out[0] = a & 0xff;
     out[1] = (a >> 8) & 0xff;
     out[2] = (a >> 16) & 0xff;
@@ -393,6 +429,8 @@ void As64(long long a, unsigned char out[8]) {
     out[7] = (a >> 56) & 0xff;
 }
 
+
+ 
 // lexer:
 int LEXER(FILE* fl) {
     if (!fl) {
@@ -406,11 +444,15 @@ int LEXER(FILE* fl) {
     while (fgets(lexer.buf, 256, fl) != NULL) {
         char* buff = lexer.buf;
         line++;
+        printf("Processing line %d: %s", line, lexer.buf);
+         fflush(stdout);
 
         while (*buff) {
+            printf("Current char: '%c' (0x%02x)\n", *buff, *buff);
+            fflush(stdout);
             while (isspace(*buff)) buff++;
             if (*buff == '\0' || *buff == '\n') break;
-            if (*buff == '/' && *(buff + 1) == '/') break; // skip comment till end of line
+            if ((*buff == '/' && *(buff + 1) == '/') || *buff == ';') break; // skip comment till end of line
             if(!in_comment && *buff == '/' && *(buff+1) == '*'){
                 in_comment = 1;
                 buff += 2;
@@ -426,7 +468,7 @@ int LEXER(FILE* fl) {
             else if (isin(LET, *buff)) { // global label
                 char buf[256] = {0};
                 int i = 0;
-                while (isin(*buff, LETEXT)) {
+                while (isin(LETEXT, *buff)) {
                     buf[i++] = *buff++;
                 }
                 
@@ -447,7 +489,7 @@ int LEXER(FILE* fl) {
                 buff++;
                 char buf[256] = {0};
                 int i = 0;
-                while (isin(*buff, LETEXT)) {
+                while (isin(LETEXT, *buff)) {
                     buf[i++] = *buff++;
                 }
 
@@ -464,10 +506,10 @@ int LEXER(FILE* fl) {
                 }
             }
             else if (*buff == '%') {
-                *buff++;
+                buff++;
                 char buf[12];
                 int i = 0;
-                while (!isspace(*buff) && *buff != '\0') buf[i++] = *buff++;
+                while (!isspace(*buff) && *buff != '\0' && *buff != ',') buf[i++] = *buff++;
                 buf[i] = '\0'; 
 
                 int regtype = is_reg(buf);
@@ -476,8 +518,10 @@ int LEXER(FILE* fl) {
                 else if (regtype == 3) add_token(T_REG32, buf, line);
                 else if (regtype == 4) add_token(T_REG64, buf, line);
                 else if (regtype == 5) add_token(T_REG64, buf, line); // same
+
+                continue;
             }
-            else if (*buff == '-' || *buff == '+' || isdigit(*buff)) {
+            else if (*buff == '-' || *buff == '+' || (isdigit(*buff) && *buff != '0')) {
                 char expr_buf[128] = {0};
                 int i = 0;
 
@@ -494,6 +538,7 @@ int LEXER(FILE* fl) {
                 char val_str[32];
                 snprintf(val_str, sizeof(val_str), "%lld", value);
                 add_token(T_INT, val_str, line);
+                continue; 
             }
             else if(*buff == '"'){
                 buff++;
@@ -507,6 +552,7 @@ int LEXER(FILE* fl) {
                     exit(1);
                 }
                 add_token(T_STR, parsed_str, line);
+                continue;
             }
             else if (*buff == '\'') {
                 char tmp;
@@ -539,35 +585,48 @@ int LEXER(FILE* fl) {
                 /*else */buff++; 
                 char tmp2[2] = {tmp, '\0'};
                 add_token(T_CHAR, tmp2, line);
+                continue;
             }
             else if(*buff == '0'){
+                printf("START!\n");
                 char tmp[72];
                 long long c = 0;
-                buff++;
-                if(*buff++ == 'x'){  // hex
-                    while (isin(LETEXT, *buff)) {
-                        if (*buff >= '0' && *buff <= '9') c = c * 16 + (*buff - '0');  
-                        else if (*buff >= 'a' && *buff <= 'f') c = c * 16 + (*buff - 'a' + 10);                       
-                        else if (*buff >= 'A' && *buff <= 'F') c = c * 16 + (*buff - 'A' + 10);                       
+                buff++; 
+                
+                if(*buff == 'x' || *buff == 'X'){ // hex
+                    buff++;
+                    while (isin(DIGEXT, *buff)) {
+                        if (*buff >= '0' && *buff <= '9') 
+                            c = c * 16 + (*buff - '0');
+                        else if (*buff >= 'a' && *buff <= 'f') 
+                            c = c * 16 + (*buff - 'a' + 10);
+                        else if (*buff >= 'A' && *buff <= 'F') 
+                            c = c * 16 + (*buff - 'A' + 10);
                         else break;
+                        buff++; 
                     }
-                    snprintf(tmp, sizeof(tmp), "%d", c);
+                    snprintf(tmp, sizeof(tmp), "%lld", c); 
                     add_token(T_INT, tmp, line);
                 }
-                else if(*buff == 'b'){  // binary
-                    while(isin(DIGBIN, *buff))c = c * 2 + (*buff++ - '0');
+                else if(*buff == 'b'){ // binary
+                    buff++; 
+                    while(isin(DIGBIN, *buff))
+                        c = c * 2 + (*buff++ - '0');
                     snprintf(tmp, sizeof(tmp), "%lld", c);
                     add_token(T_INT, tmp, line);
                 }
-                else if (*buff == 'o') {  // octal
-                    while (isin(DIGOCT, *buff)) c = c * 8 + (*buff++ - '0');
+                else if (*buff == 'o') { // octal
+                    buff++; 
+                    while (isin(DIGOCT, *buff)) 
+                        c = c * 8 + (*buff++ - '0');
                     snprintf(tmp, sizeof(tmp), "%lld", c);
                     add_token(T_INT, tmp, line);
                 }
                 else {
-                    snprintf(tmp, sizeof(tmp), "%lld", 0);
-                    add_token(T_INT, tmp, line);
+                    add_token(T_INT, "0", line);
+                    buff--; 
                 }
+                continue;
             }
             else if (*buff == '[') {
                 buff++; 
@@ -595,6 +654,7 @@ int LEXER(FILE* fl) {
                }
                 
                 add_token(T_ADDR_EXPR, clean_expr, line);
+                continue;
             }
             else if (*buff == '!') {
                 buff++; 
@@ -611,11 +671,13 @@ int LEXER(FILE* fl) {
 
                     add_token(T_SEC, section, line);
                 }
+                continue;
             }
             else if(*buff == ','){
                 buff++;
                 while(isspace(*buff)) buff++;
                 add_token(T_COMMA, ",", line);
+                continue;
             } 
             else if(isin(LET, *buff)){
                 char buffer[56] = {0};
@@ -631,21 +693,25 @@ int LEXER(FILE* fl) {
                 else if(strcasecmp(buffer, HUMAN_AST[5]) == 0) add_token(T_DWORDPTR, buffer, line);
                 else if(strcasecmp(buffer, HUMAN_AST[6]) == 0) add_token(T_LBYTE, buffer, line);
                 else if(strcasecmp(buffer, HUMAN_AST[7]) == 0) add_token(T_LBYTEPTR, buffer, line);
-                else add_token(T_ID, buffer, line);              
+                else add_token(T_ID, buffer, line);
+                continue;             
             }
-            else if (strncasecmp(buff, "resb", 4) == 0){ add_token(T_RESB, buff, line); buff += 4; while (isspace(*buff)) buff++;}
-            else if (strncasecmp(buff, "resq", 4) == 0){ add_token(T_RESQ, buff, line); buff += 4; while (isspace(*buff)) buff++;}
-            else if (strncasecmp(buff, "resd", 4) == 0){ add_token(T_RESD, buff, line); buff += 4; while (isspace(*buff)) buff++;}
-            else if (strncasecmp(buff, "resl", 4) == 0){ add_token(T_RESL, buff, line); buff += 4; while (isspace(*buff)) buff++;}
+            else if (strncasecmp(buff, "resb", 4) == 0){ add_token(T_RESB, buff, line); buff += 4; while (isspace(*buff)) buff++; continue;}
+            else if (strncasecmp(buff, "resq", 4) == 0){ add_token(T_RESQ, buff, line); buff += 4; while (isspace(*buff)) buff++; continue;}
+            else if (strncasecmp(buff, "resd", 4) == 0){ add_token(T_RESD, buff, line); buff += 4; while (isspace(*buff)) buff++; continue;}
+            else if (strncasecmp(buff, "resl", 4) == 0){ add_token(T_RESL, buff, line); buff += 4; while (isspace(*buff)) buff++; continue;}
                 
-            else{ fprintf(stderr, "AmmAsm: unvalid syntax or char on line", line); exit(1); }
+            else{ 
+                fprintf(stderr, "AmmAsm: unvalid syntax or char on line\n", line); 
+                exit(1); 
+            }
             buff++;
         }
 
-        add_token(T_EOL, "\\n", line);
+        add_token(T_EOL, "", line);
     }
-    add_token(T_EOF, "\x7FELF", line); // LOL
-    return 0;
+    add_token(T_EOF, "ELF", line); // LOL
+    return line;
 }
 
 
@@ -688,7 +754,7 @@ typedef struct AST {
     char cmd[256];  // mostly useing for ins
 
     union {     
-        struct {uint8_t operands[4][20]; OperandType otype[4]; int oper_count; } ins;
+        struct {uint8_t operands[4][35]; OperandType otype[4]; int oper_count; } ins;
         struct { unsigned char data[256]; int size; } u8;
         struct { unsigned char *data[256]; int size; } u8ptr;
         struct { unsigned char data[256]; int size; } u16;
@@ -708,22 +774,150 @@ typedef struct AST {
         int machine_code_size;
 } AST;
 
+AST ast[MAX_TOKENS];
+int ast_count = 0;
+
+
+void DEBUG_PRINT_AST() {
+    printf("=== AST DUMP (%d nodes) ===\n", ast_count);
+    for (int i = 0; i < ast_count; i++) {
+        AST* node = &ast[i];
+        const char* type_str = "UNKNOWN";
+        
+        switch(node->type) {
+            case AST_INS: type_str = "AST_INS"; break;
+            case AST_U8: type_str = "AST_U8"; break;
+            case AST_U8PTR: type_str = "AST_U8PTR"; break;
+            case AST_U16: type_str = "AST_U16"; break;
+            case AST_U16PTR: type_str = "AST_U16PTR"; break;
+            case AST_U32: type_str = "AST_U32"; break;
+            case AST_U32PTR: type_str = "AST_U32PTR"; break;
+            case AST_U64: type_str = "AST_U64"; break;
+            case AST_U64PTR: type_str = "AST_U64PTR"; break;
+            case AST_RESB: type_str = "AST_RESB"; break;
+            case AST_RESQ: type_str = "AST_RESQ"; break;
+            case AST_RESD: type_str = "AST_RESD"; break;
+            case AST_RESL: type_str = "AST_RESL"; break;
+            case AST_LABEL: type_str = "AST_LABEL"; break;
+            case AST_SECTION: type_str = "AST_SECTION"; break;
+            case AST_ADDR_EXPR: type_str = "AST_ADDR_EXPR"; break;
+        }
+        
+        printf("AST[%d]: type=%-15s", i, type_str);
+        
+        switch(node->type) {
+            case AST_INS:
+                printf(" cmd='%s' operands=%d", node->cmd, node->ins.oper_count);
+                for (int j = 0; j < node->ins.oper_count; j++) {
+                    const char* otype_str = "?";
+                    switch(node->ins.otype[j]) {
+                        case O_NONE: otype_str = "NONE"; break;
+                        case O_REG8: otype_str = "REG8"; break;
+                        case O_REG16: otype_str = "REG16"; break;
+                        case O_REG32: otype_str = "REG32"; break;
+                        case O_REG64: otype_str = "REG64"; break;
+                        case O_IMM: otype_str = "IMM"; break;
+                        case O_MEM: otype_str = "MEM"; break;
+                        case O_LABEL: otype_str = "LABEL"; break;
+                    }
+                    printf(" [%s:'%s']", otype_str, node->ins.operands[j]);
+                }
+                break;
+                
+            case AST_LABEL:
+                printf(" name='%s' addr=0x%lx", node->label.name, node->label.adress);
+                break;
+                
+            case AST_U8:
+                printf(" size=%d data=[", node->u8.size);
+                for (int j = 0; j < node->u8.size; j++) {
+                    printf("%02x", node->u8.data[j]);
+                    if (j < node->u8.size - 1) printf(" ");
+                }
+                printf("]");
+                break;
+                
+            case AST_U16:
+                printf(" size=%d data=[", node->u16.size);
+                for (int j = 0; j < node->u16.size; j++) {
+                    printf("%04x", node->u16.data[j]);
+                    if (j < node->u16.size - 1) printf(" ");
+                }
+                printf("]");
+                break;
+                
+            case AST_U32:
+                printf(" size=%d data=[", node->u32.size);
+                for (int j = 0; j < node->u32.size; j++) {
+                    printf("%08x", node->u32.data[j]);
+                    if (j < node->u32.size - 1) printf(" ");
+                }
+                printf("]");
+                break;
+                
+            case AST_U64:
+                printf(" size=%d data=[", node->u64.size);
+                for (int j = 0; j < node->u64.size; j++) {
+                    printf("%016llx", node->u64.data[j]);
+                    if (j < node->u64.size - 1) printf(" ");
+                }
+                printf("]");
+                break;
+                
+            case AST_RESB:
+                printf(" size=%ld bytes", node->resb.size);
+                break;
+                
+            case AST_RESQ:
+                printf(" size=%ld qwords", node->resq.size);
+                break;
+                
+            case AST_RESD:
+                printf(" size=%ld dwords", node->resd.size);
+                break;
+                
+            case AST_RESL:
+                printf(" size=%ld lbytes", node->resl.size);
+                break;
+                
+            case AST_SECTION:
+                printf(" name='%s'", node->section.name);
+                break;
+        }
+        
+        if (node->machine_code_size > 0) {
+            printf(" machine_code=[");
+            for (int j = 0; j < node->machine_code_size; j++) {
+                printf("%02x", node->machine_code[j]);
+                if (j < node->machine_code_size - 1) printf(" ");
+            }
+            printf("]");
+        }
+        
+        printf("\n");
+    }
+    printf("=== END AST ===\n\n");
+}
+
+
 // parser:
 AST* PARSE(){
     int pos = 0;
     uint64_t pc = 0;
 
-    while(toks[pos].type != T_EOF){
+    while(pos < toks_count && toks[pos].type != T_EOF){
         Token *tok = &toks[pos];
+        AST node = { 0 };
         if (tok->type == T_INS) {
-            AST node = { .type = AST_INS };
+            node.type = AST_INS;
             node.ins.oper_count = 0;
+            strncpy(node.cmd, toks[pos].value, sizeof node.cmd);
             pos++;
-            strncpy(node.cmd, toks[pos++].value, sizeof node.cmd);
+
             while(pos < toks_count){
                 if(toks[pos].type == T_COMMA){ pos++; continue;}
-                if(toks[pos].type == T_REG8 || toks[pos].type == T_REG16 ||
-                toks[pos].type == T_REG32 || toks[pos].type == T_REG64){
+                else if(toks[pos].type == T_REG8 || toks[pos].type == T_REG16 ||
+                        toks[pos].type == T_REG32 || toks[pos].type == T_REG64){
                     int tt = toks[pos].type;
                     strncpy(node.ins.operands[node.ins.oper_count], toks[pos++].value, 36);
                     switch (tt) {
@@ -733,28 +927,41 @@ AST* PARSE(){
                         case T_REG64: node.ins.otype[node.ins.oper_count++] = O_REG64; break;
                         default:      node.ins.otype[node.ins.oper_count++] = O_NONE;  break;
                     }
-                }                    
+                }
                 else if(toks[pos].type == T_ADDR_EXPR){
-                    strncpy(node.ins.operands[node.ins.oper_count], toks[pos++].value, 36);
-                    node.ins.otype[node.ins.oper_count] = O_MEM;
+                    strncpy(node.ins.operands[node.ins.oper_count], toks[pos].value, 35);
+                    pos++;
+                    node.ins.otype[node.ins.oper_count++] = O_MEM;
+                    continue;
                 }
                 else if(toks[pos].type == T_LAB){
-                    strncpy(node.ins.operands[node.ins.oper_count], toks[pos++].value, 36);
-                    node.ins.otype[node.ins.oper_count] = O_LABEL;
+                    strncpy(node.ins.operands[node.ins.oper_count], toks[pos].value, 35);
+                    pos++;
+                    node.ins.otype[node.ins.oper_count++] = O_LABEL;
+                    continue;
                 }
                 else if(toks[pos].type == T_INT){
-                    strncpy(node.ins.operands[node.ins.oper_count], toks[pos++].value, 36);
-                    node.ins.otype[node.ins.oper_count] = O_IMM;
+                    strncpy(node.ins.operands[node.ins.oper_count], toks[pos].value, 35);
+                    pos++;
+                    node.ins.otype[node.ins.oper_count++] = O_IMM;
+                    continue;
                 }
-                else if(toks[pos].type == T_EOL || toks[pos].type == T_EOF) break;
+                else if(toks[pos].type == T_EOL || toks[pos].type == T_EOF){
+                    break;
+                }
+                else {
+                    fprintf(stderr, "AmmAsm: Unexpected token type %d at line %d\n", 
+                            toks[pos].type, toks[pos].line);
+                    pos++; 
+                }
             }
             ast[ast_count++] = node;
             if (pos < toks_count && toks[pos].type == T_EOL) ++pos;
-            continue;            
+            continue;
         }
 
         if(tok->type == T_LAB){
-            AST node = { .type = AST_LABEL };
+            node.type = AST_LABEL;
             if(tok->type != T_EOF && tok->type != T_EOL){
                 strncpy(node.label.name, toks[pos++].value, sizeof(node.label.name));
                 node.label.adress = pc; // then we will add 0x40000 when I will add support of ELF64.. but I am toooo lazy
@@ -764,7 +971,7 @@ AST* PARSE(){
             continue;
         }
         if(tok->type == T_BYTE && (pos == 0 || toks[pos-1].type == T_ID)){   
-            AST node = { .type = AST_U8};
+            node.type = AST_U8;
             node.u8.size = 0;
             while(pos < toks_count){  
                 if (toks[pos].type == T_EOL || toks[pos].type == T_EOF) break;
@@ -800,7 +1007,7 @@ AST* PARSE(){
             continue;
         }
         else if (tok->type == T_BYTEPTR && (pos == 0 || toks[pos-1].type == T_ID)) {
-            AST node = { .type = AST_U8PTR };
+            node.type = AST_U8PTR;
             node.u8ptr.size = 0;
             pos++;
 
@@ -828,7 +1035,7 @@ AST* PARSE(){
                     pos++;
                 }
                 else {
-                    fprintf(stderr, "AmmAsm: expected label name (T_ID) or 0 (NULL) in BYTEPTRS at line %d\n", toks[pos].line);
+                    fprintf(stderr, "AmmAsm: expected label name (T_ID\\T_LAB) or 0 (NULL) in U8PTR at line %d\n", toks[pos].line);
                     exit(1);
                 }
             }
@@ -839,7 +1046,7 @@ AST* PARSE(){
             continue;
         }
         else if(tok->type == T_QWORD && (pos == 0 || toks[pos-1].type == T_ID)){
-            AST node = { .type = AST_U16};
+            node.type = AST_U16;
             node.u16.size = 0;
             while(pos < toks_count){
                 if (toks[pos].type == T_EOL || toks[pos].type == T_EOF) break;
@@ -861,7 +1068,7 @@ AST* PARSE(){
             continue;
         }
         else if(tok->type == T_QWORDPTR && (pos == 0 || toks[pos-1].type == T_ID)){
-            AST node = { .type = AST_U16PTR };
+            node.type = AST_U16PTR;
             node.u16ptr.size = 0;
             ++pos; // skip cmd
 
@@ -890,7 +1097,7 @@ AST* PARSE(){
             continue;            
         }
         else if (tok->type == T_DWORD && (pos == 0 || toks[pos-1].type == T_ID)) {
-            AST node = { .type = AST_U32 };
+            node.type = AST_U32;
             node.u32.size = 0;
             pos++; 
 
@@ -912,7 +1119,7 @@ AST* PARSE(){
             if (pos < toks_count && toks[pos].type == T_EOL) pos++;
         }
         else if(tok->type == T_DWORDPTR && (pos == 0 || toks[pos-1].type == T_ID)){
-            AST node = { .type = AST_U32PTR };
+            node.type = AST_U32PTR;
             node.u32ptr.size = 0;
             ++pos; // skip cmd
 
@@ -941,7 +1148,7 @@ AST* PARSE(){
             continue;            
         }
         else if (tok->type == T_LBYTE && (pos == 0 || toks[pos-1].type == T_ID)) {
-            AST node = { .type = AST_U64 };
+            node.type = AST_U64;
             node.u64.size = 0;
             pos++; 
 
@@ -963,7 +1170,7 @@ AST* PARSE(){
             if (pos < toks_count && toks[pos].type == T_EOL) pos++;
         }
         else if(tok->type == T_LBYTEPTR && (pos == 0 || toks[pos-1].type == T_ID)){
-            AST node = { .type = AST_U64PTR };
+            node.type = AST_U64PTR;
             node.u64ptr.size = 0;
             ++pos; // skip cmd
 
@@ -1002,9 +1209,6 @@ AST* PARSE(){
                     (pp->type == T_RESL) ? "resl" : "?");                    
                 exit(1);    
             }
-            // else
-
-            AST node = { 0 };
 
             switch (tok->type){
             case T_RESB: node.type = AST_RESB; node.resb.size = (long)eval_expr(toks[pos].value); break;
@@ -1019,25 +1223,14 @@ AST* PARSE(){
             if(pos < toks_count && toks[pos].type == T_EOL) ++pos;
             continue;              
         }
-        else if(tok->type == T_ADDR_EXPR){
-            AST node = { 0 };
-            node.ins.oper_count = 0;
-            node.type = AST_ADDR_EXPR;
+        if (pos < toks_count && toks[pos].type != T_EOF) {
             pos++;
-
-
-
-
-            
-
         }
-
-        
-
     }
+    return ast; // for debug
 }
-
-int indexof(char** regs, char* reg){
+// How cpu see regs
+int indexof(const char** regs, char* reg){
 
     if(!is2arrin(regs, reg)) return -1;
 
@@ -1052,6 +1245,7 @@ int indexof(char** regs, char* reg){
     (!strcasecmp(reg, "rdi") || !strcasecmp(reg, "r15") || !strcasecmp(reg, "edi") || !strcasecmp(reg, "di") || !strcasecmp(reg, "dil") || !strcasecmp(reg, "r15d") || !strcasecmp(reg, "r15w") || !strcasecmp(reg, "r15b")) ? 0b111 : -1;
 }
 
+// For human readable
 int find_reg64_index(const char* reg) {
     for (int i=0; i<8; i++) {
         if (strcasecmp(regs64[i], reg) == 0) return i;
@@ -1354,7 +1548,7 @@ void parseInst(AST* node, int* pc, int line) {
     *s = 0;
 
     // ============================================================================
-    // "MOV" INSTRUCTION ENCODING REFERENCE
+    // |                "MOV" INSTRUCTION ENCODING REFERENCE                      |
     // ============================================================================
     // 
     // REX prefix (0x40-0x4F):
@@ -1406,7 +1600,7 @@ void parseInst(AST* node, int* pc, int line) {
 
             node->machine_code[0] = rex;
             node->machine_code[1] = opcode;
-            As64(imm64, &node->machine_code[2]);
+            As64((uint64_t)imm64, &node->machine_code[2]);
 
             *s = 10;
             *pc += 10;
@@ -1435,7 +1629,7 @@ void parseInst(AST* node, int* pc, int line) {
             int pos = 0;
             if (rex) node->machine_code[pos++] = rex;
             node->machine_code[pos++] = opcode;
-            As32(imm32, &node->machine_code[pos]);
+            As32((uint32_t)imm32, &node->machine_code[pos]);
             pos += 4;
 
             *s = pos;
@@ -1466,7 +1660,7 @@ void parseInst(AST* node, int* pc, int line) {
             node->machine_code[pos++] = 0x66; // 16-bit prefix
             if (rex) node->machine_code[pos++] = rex;
             node->machine_code[pos++] = opcode;
-            As16(imm16, &node->machine_code[pos]);
+            As16((uint16_t)imm16, &node->machine_code[pos]);
             pos += 2;
 
             *s = pos;
@@ -1720,7 +1914,7 @@ void parseInst(AST* node, int* pc, int line) {
             if (disp_size == 1)
                 node->machine_code[pos++] = (uint8_t)parsed.disp_val;
             else if (disp_size == 4) {
-                As32(parsed.disp_val, &node->machine_code[pos]);
+                As32((uint32_t)parsed.disp_val, &node->machine_code[pos]);
                 pos += 4;
             }
 
@@ -1800,7 +1994,7 @@ void parseInst(AST* node, int* pc, int line) {
             if (disp_size == 1)
                 node->machine_code[pos++] = (uint8_t)parsed.disp_val;
             else if (disp_size == 4) {
-                As32(parsed.disp_val, &node->machine_code[pos]);
+                As32((uint32_t)parsed.disp_val, &node->machine_code[pos]);
                 pos += 4;
             }
 
@@ -1881,7 +2075,7 @@ void parseInst(AST* node, int* pc, int line) {
             if (disp_size == 1)
                 node->machine_code[pos++] = (uint8_t)parsed.disp_val;
             else if (disp_size == 4) {
-                As32(parsed.disp_val, &node->machine_code[pos]);
+                As32((uint32_t)parsed.disp_val, &node->machine_code[pos]);
                 pos += 4;
             }
 
@@ -1961,7 +2155,7 @@ void parseInst(AST* node, int* pc, int line) {
             if (disp_size == 1)
                 node->machine_code[pos++] = (uint8_t)parsed.disp_val;
             else if (disp_size == 4) {
-                As32(parsed.disp_val, &node->machine_code[pos]);
+                As32((uint32_t)parsed.disp_val, &node->machine_code[pos]);
                 pos += 4;
             }
 
@@ -2046,7 +2240,7 @@ void parseInst(AST* node, int* pc, int line) {
             if (disp_size == 1)
                 node->machine_code[pos++] = (uint8_t)parsed.disp_val;
             else if (disp_size == 4) {
-                As32(parsed.disp_val, &node->machine_code[pos]);
+                As32((uint32_t)parsed.disp_val, &node->machine_code[pos]);
                 pos += 4;
             }
 
@@ -2126,7 +2320,7 @@ void parseInst(AST* node, int* pc, int line) {
             if (disp_size == 1)
                 node->machine_code[pos++] = (uint8_t)parsed.disp_val;
             else if (disp_size == 4) {
-                As32(parsed.disp_val, &node->machine_code[pos]);
+                As32((uint32_t)parsed.disp_val, &node->machine_code[pos]);
                 pos += 4;
             }
 
@@ -2207,7 +2401,7 @@ void parseInst(AST* node, int* pc, int line) {
             if (disp_size == 1)
                 node->machine_code[pos++] = (uint8_t)parsed.disp_val;
             else if (disp_size == 4) {
-                As32(parsed.disp_val, &node->machine_code[pos]);
+                As32((uint32_t)parsed.disp_val, &node->machine_code[pos]);
                 pos += 4;
             }
 
@@ -2287,7 +2481,7 @@ void parseInst(AST* node, int* pc, int line) {
             if (disp_size == 1)
                 node->machine_code[pos++] = (uint8_t)parsed.disp_val;
             else if (disp_size == 4) {
-                As32(parsed.disp_val, &node->machine_code[pos]);
+                As32((uint32_t)parsed.disp_val, &node->machine_code[pos]);
                 pos += 4;
             }
 
@@ -2310,7 +2504,7 @@ void parseInst(AST* node, int* pc, int line) {
             long imm_val = (long)atoll(node->ins.operands[1]);
             
             if (imm_val > 0x7FFFFFFF || imm_val < (long)0xFFFFFFFF80000000LL) {
-                fprintf(stderr, "AmmAsm: Cannot MOV imm64 to memory directly (no such opcode)\n");
+                fprintf(stderr, "AmmAsm: Cannot MOV imm64 to memory directly (no such opcode). On line '%d'\n", line);
                 exit(1);
             }
 
@@ -2380,7 +2574,7 @@ void parseInst(AST* node, int* pc, int line) {
             if (disp_size == 1)
                 node->machine_code[pos++] = (uint8_t)parsed.disp_val;
             else if (disp_size == 4) {
-                As32(parsed.disp_val, &node->machine_code[pos]);
+                As32((uint32_t)parsed.disp_val, &node->machine_code[pos]);
                 pos += 4;
             }
 
@@ -2402,4 +2596,45 @@ void parseInst(AST* node, int* pc, int line) {
     }
 }
 
+void Ammcompiler(FILE *out) {
+    if (!out) return;
 
+    for (int i = 0; i < ast_count; ++i) {
+        for(int j = 0; j < ast[i].machine_code_size; ++j)
+            fputc(ast[i].machine_code[j], out);
+    }
+    fflush(out);
+}
+
+
+int main(int argc, char **argv){
+    if(argc < 2){
+        printf("AmmAsm v1.0 \nUsage: ./aasm <input.asm> \n");
+        return 1;
+    }
+    int pc = 0, line = 0;
+    FILE *input = fopen(argv[1], "r");
+
+    line = LEXER(input);
+    fclose(input); 
+    DEBUG_PRINT_TOKENS();
+    
+    PARSE();
+    DEBUG_PRINT_AST();
+
+    printf("starting compile\n");
+    for(int i = 0; i < ast_count; i++)
+        parseInst(&ast[i], &pc, line);
+    printf("end compile\n");
+
+    FILE *output = fopen("a.bin", "wb");
+    if (!output) {
+        fprintf(stderr, "AmmAsm: Failed to create output.bin\n");
+        return 1;
+    }
+    Ammcompiler(output);
+    fclose(output);
+    
+    printf("AmmAsm: Compiled successfully! Output: output.bin (%d bytes)\n", pc);
+    return 0;
+}
