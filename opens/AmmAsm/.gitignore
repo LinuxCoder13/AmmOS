@@ -1,0 +1,22 @@
+# Compiled binaries
+aasm
+*.o
+*.bin
+*.out
+
+# Test files
+input
+input.asm
+test_*
+
+# Temporary files
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build artifacts
+*.so
+*.a
+*.dylib
+EOF
