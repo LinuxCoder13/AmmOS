@@ -44,9 +44,9 @@ int main(int argc, char **argv) {
 
     printf("Loaded %zu bytes to JIT memory, executing...\n", size);
 
-    int (*func)() = jit;
-    int result = func();
-    printf("Program returned: %d\n", result);
+    long (*func)() = jit;
+    long result = func();
+    printf("Program returned: %lld\n", result);
 
     munmap(jit, size);
     return 0;

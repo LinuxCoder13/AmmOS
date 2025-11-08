@@ -25,6 +25,8 @@
  * SOFTWARE.
  */
 
+//  #define DEBUG
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -81,6 +83,7 @@
 // #define ASTEOF   0x03
 
 #define MAX_TOKENS 1024
+
                 
 // .rodata            
 const char *CMDS[] = {"mov", "push", "pop", "syscall", "call", "jmp", "add", "sub", 
@@ -444,11 +447,15 @@ int LEXER(FILE* fl) {
     while (fgets(lexer.buf, 256, fl) != NULL) {
         char* buff = lexer.buf;
         line++;
-        printf("Processing line %d: %s", line, lexer.buf);
-         fflush(stdout);
+        #ifdef DEBUG
+            printf("Processing line %d: %s", line, lexer.buf);
+            fflush(stdout);
+        #endif
 
         while (*buff) {
-            printf("Current char: '%c' (0x%02x)\n", *buff, *buff);
+            #ifdef DEBUG
+                printf("Current char: '%c' (0x%02x)\n", *buff, *buff);
+            #endif
             fflush(stdout);
             while (isspace(*buff)) buff++;
             if (*buff == '\0' || *buff == '\n') break;
@@ -512,12 +519,12 @@ int LEXER(FILE* fl) {
                 while (!isspace(*buff) && *buff != '\0' && *buff != ',') buf[i++] = *buff++;
                 buf[i] = '\0'; 
 
-                int regtype = is_reg(buf);
-                if (regtype == 1) add_token(T_REG8, buf, line);
-                else if (regtype == 2) add_token(T_REG16, buf, line);
-                else if (regtype == 3) add_token(T_REG32, buf, line);
-                else if (regtype == 4) add_token(T_REG64, buf, line);
-                else if (regtype == 5) add_token(T_REG64, buf, line); // same
+                if(is2arrin(regs8, buf)       || is2arrin(regs8GP, buf))  add_token(T_REG8, buf, line);
+                else if(is2arrin(regs16, buf) || is2arrin(regs16GP, buf)) add_token(T_REG16, buf, line);
+                else if(is2arrin(regs32, buf) || is2arrin(regs32GP, buf)) add_token(T_REG32, buf, line);
+                else if(is2arrin(regs64, buf) || is2arrin(regs64GP, buf)) add_token(T_REG64, buf, line);
+
+                else { fprintf(stderr, "AmmAsm: unknow register '%s' on line %d", buf, line); exit(1);}
 
                 continue;
             }
@@ -588,7 +595,6 @@ int LEXER(FILE* fl) {
                 continue;
             }
             else if(*buff == '0'){
-                printf("START!\n");
                 char tmp[72];
                 long long c = 0;
                 buff++; 
@@ -624,7 +630,6 @@ int LEXER(FILE* fl) {
                 }
                 else {
                     add_token(T_INT, "0", line);
-                    buff--; 
                 }
                 continue;
             }
@@ -748,27 +753,33 @@ typedef enum {
     O_LABEL
 } OperandType;
 
+// will be added more in future version
+typedef enum {
+    SEC_DATA,
+    // SEC_BSS,
+    SEC_TEXT
+} SECtype;
 
 typedef struct AST {
     ASTType type;
     char cmd[256];  // mostly useing for ins
 
     union {     
-        struct {uint8_t operands[4][35]; OperandType otype[4]; int oper_count; } ins;
-        struct { unsigned char data[256]; int size; } u8;
-        struct { unsigned char *data[256]; int size; } u8ptr;
-        struct { unsigned char data[256]; int size; } u16;
-        struct { unsigned char *data[256]; int size; } u16ptr;
-        struct { unsigned char data[256]; int size; } u32;
-        struct { unsigned char *data[256]; int size; } u32ptr;
-        struct { unsigned char data[256]; int size; } u64;
-        struct { unsigned char *data[256]; int size; } u64ptr;
-        struct { long size; } resb;
-        struct { long size; } resq;
-        struct { long size; } resd;
-        struct { long size; } resl;
-        struct { char name[64]; long adress; } label; // 64 bit adress
-        struct { char name[63]; } section;
+        struct { uint8_t operands[4][35]; OperandType otype[4]; int oper_count; } ins;
+        struct { uint8_t data[256]; int size; } u8;
+        struct { uint8_t *data[256]; int size; } u8ptr;
+        struct { uint8_t data[256]; int size; } u16;
+        struct { uint8_t *data[256]; int size; } u16ptr;
+        struct { uint8_t data[256]; int size; } u32;
+        struct { uint8_t *data[256]; int size; } u32ptr;
+        struct { uint8_t data[256]; int size; } u64;
+        struct { uint8_t *data[256]; int size; } u64ptr;
+        struct { uint64_t size; } resb;
+        struct { uint64_t size; } resq;
+        struct { uint64_t size; } resd;
+        struct { uint64_t size; } resl;
+        struct { uint8_t name[64]; uint64_t adress; } label; // 64 bit adress
+        struct { uint8_t name[12]; uint64_t offset; uint32_t size; SECtype type;} section;
     };
         uint8_t machine_code[256];
         int machine_code_size;
@@ -964,7 +975,7 @@ AST* PARSE(){
             node.type = AST_LABEL;
             if(tok->type != T_EOF && tok->type != T_EOL){
                 strncpy(node.label.name, toks[pos++].value, sizeof(node.label.name));
-                node.label.adress = pc; // then we will add 0x40000 when I will add support of ELF64.. but I am toooo lazy
+                node.label.adress = pc;
             }
             ast[ast_count++] = node;
             ++pos;
@@ -2594,47 +2605,260 @@ void parseInst(AST* node, int* pc, int line) {
             *pc += pos;
         }
     }
+
+    // место для дукументации для add
+
+    else if(strcasecmp(node->cmd, "add") == 0){
+        
+        // =====================================
+        // ADD reg, imm (mod = 11)
+        // =====================================
+
+        // add r/m64, imm32
+        if(node->ins.otype[0] == O_REG64 && node->ins.otype[1] == O_IMM){
+            uint8_t opcode = 0x81; // add reg64/32, imm32
+            uint8_t modrm  = 0;
+            uint8_t rex    = REX_BASE | REX_W;
+            uint32_t imm32 = (uint32_t)atoi(node->ins.operands[1]);
+            int pos = 0;
+            uint8_t rm = 0;
+
+            int idx = find_reg64_index(node->ins.operands[0]);
+            if(idx != -1) { rm = idx; if(rm >= 8) rex |= REX_B; }
+            modrm = (0b11 << 6) | (0 << 3) | (rm & 7);
+
+            node->machine_code[pos++] = rex;
+            node->machine_code[pos++] = opcode;
+            node->machine_code[pos++] = modrm;
+            As32(imm32, &node->machine_code[pos]);
+            pos += 4;
+
+            *s = pos; // 7
+            *pc += pos;
+        }
+
+        // add r/m32, imm32
+        else if(node->ins.otype[0] == O_REG32 && node->ins.otype[1] == O_IMM){
+            uint8_t opcode = 0x81; // add reg64/32, imm32
+            uint8_t modrm  = 0;
+            uint8_t rex    = 0;
+            uint32_t imm32 = (uint32_t)atoi(node->ins.operands[1]);
+            int pos = 0;
+            uint8_t rm = 0;
+
+            int idx = find_reg32_index(node->ins.operands[0]);
+            
+            // Special case
+            if(idx == 0b000){  // eax
+                node->machine_code[0] = 0x05;
+                As32(imm32, &node->machine_code[1]);
+                *s = 5;
+                *pc += 5;
+                return;
+            }
+            
+            if(idx != -1) { rm = idx; if(rm >= 8) rex = REX_BASE | REX_B; /* emit */} 
+            modrm = (0b11 << 6) | (0 << 3) | (rm & 7);
+
+            if(rex) node->machine_code[pos++] = rex;
+            node->machine_code[pos++] = opcode;
+            node->machine_code[pos++] = modrm;
+            As32(imm32, &node->machine_code[pos]);
+            pos += 4;
+
+            *s = pos; 
+            *pc += pos;
+        }
+
+        // add r/m16, imm16
+        else if(node->ins.otype[0] == O_REG16 && node->ins.otype[1] == O_IMM){
+            uint8_t opcode = 0x81; // add r/m16, imm16
+            uint8_t modrm  = 0;
+            uint8_t rex    = 0;
+            uint8_t legacy_prefix = 0x66; 
+            uint32_t imm16 = (uint16_t)atoi(node->ins.operands[1]);
+            int pos = 0;
+            uint8_t rm = 0;
+
+            int idx = find_reg16_index(node->ins.operands[0]);
+            
+            // Special case
+            if(idx == 0b000){ // ax
+                node->machine_code[0] = legacy_prefix;
+                node->machine_code[1] = 0x05;
+                As16(imm16, &node->machine_code[2]);
+                *s = 4;
+                *pc += 4;
+                return;
+            } 
+
+            if(idx != -1) { rm = idx; if(rm >= 8) rex = REX_BASE | REX_B; }
+            modrm = (0b11 << 6) | (0 << 3) | (rm & 7);
+
+            node->machine_code[pos++] = legacy_prefix;
+            if(rex)node->machine_code[pos++] = rex;
+            node->machine_code[pos++] = opcode;
+            node->machine_code[pos++] = modrm;
+            As16(imm16, &node->machine_code[pos]);
+            pos += 2;
+
+            *s = pos; 
+            *pc += pos;
+        }
+
+        // add r/m8, imm8
+        else if(node->ins.otype[0] == O_REG8 && node->ins.otype[1] == O_IMM){
+            uint8_t opcode = 0x80; // add r/m8, imm8
+            uint8_t modrm  = 0;
+            uint8_t rex    = 0; 
+            uint8_t imm8 = (uint8_t)atoi(node->ins.operands[1]);
+            int pos = 0;
+            uint8_t rm = 0;
+
+            int idx = find_reg8_index(node->ins.operands[0]);
+            
+            // Special case
+            if(idx == 0b000){ // al
+                node->machine_code[0] = 0x04;
+                node->machine_code[1] = imm8;
+                *s = 2;
+                *pc += 2;
+                return;
+            }
+
+            if(idx != -1) { rm = idx; if(rm >= 8) rex = REX_BASE | REX_B; }
+            modrm = (0b11 << 6) | (0 << 3) | (rm & 7);
+
+            if(rex)node->machine_code[pos++] = rex;
+            node->machine_code[pos++] = opcode;
+            node->machine_code[pos++] = modrm;
+            node->machine_code[pos++] = imm8;
+
+            *s = pos; 
+            *pc += pos;
+        }
+
+        // ===========================================
+        // 2. add reg, reg (mod = 11)
+        // ===========================================
+        // SOON.....
+    }
 }
 
-void Ammcompiler(FILE *out) {
-    if (!out) return;
+
+void ELFgenfile(FILE *fl, uint64_t e_entry, uint8_t *text_code, uint64_t text_size, int *pc) {
+    if (!fl) return;
+
+    // === ELF Header ===
+    unsigned char elf_header[64] = {
+        0x7F,'E','L','F', 0x02,0x01,0x01,0x00,
+        0,0,0,0,0,0,0,0,
+        0x02,0x00, 0x3E,0x00, 0x01,0x00,0x00,0x00,
+        0,0,0,0,0,0,0,0, // e_entry placeholder
+        0x40,0x00,0x00,0x00,0,0,0,0, // e_phoff = 0x40
+        0,0,0,0,0,0,0,0, // e_shoff
+        0,0,0,0,          // e_flags
+        0x40,0x00,        // e_ehsize
+        0x38,0x00,        // e_phentsize
+        0x01,0x00,        // e_phnum = 1
+        0,0,0,0,0,0
+    };
+
+    uint64_t text_offset = 0x1000; 
+    uint64_t text_vaddr  = 0x401000; 
+    uint64_t entry        = text_vaddr; // e_entry должен быть виртуальным адресом
+
+    memcpy(&elf_header[0x18], &entry, 8);
+    fwrite(elf_header, 1, 64, fl);
+    *pc += 64;
+
+    // === Program Header (.text RX) ===
+    uint8_t phdr[56] = {
+        0x01,0x00,0x00,0x00, // p_type PT_LOAD
+        0x05,0x00,0x00,0x00, // p_flags PF_R | PF_X
+        0,0,0,0,0,0,0,0,     // p_offset
+        0,0,0,0,0,0,0,0,     // p_vaddr
+        0,0,0,0,0,0,0,0,     // p_paddr
+        0,0,0,0,0,0,0,0,     // p_filesz
+        0,0,0,0,0,0,0,0,     // p_memsz
+        0x00,0x10,0x00,0x00,0,0,0,0  // p_align
+    };
+
+    memcpy(&phdr[8],  &text_offset, 8);
+    memcpy(&phdr[16], &text_vaddr,  8);
+    memcpy(&phdr[24], &text_vaddr,  8);
+    memcpy(&phdr[32], &text_size,   8);
+    memcpy(&phdr[40], &text_size,   8);
+
+    fwrite(phdr, 1, 56, fl);
+    *pc += 56;
+
+    // === Padding till 0x1000 ===
+    uint64_t padding_size = 0x1000 - (64 + 56);
+    uint8_t *padding = calloc(1, padding_size);
+    fwrite(padding, 1, padding_size, fl);
+    free(padding);
+    *pc += padding_size;
+
+    // === .text section ===
+    fwrite(text_code, 1, text_size, fl);
+    *pc += text_size;
+}
+
+
+
+
+
+void compiler(uint8_t *text, int *textsize) {
+    if (!text) return;
+
+    uint64_t pos = 0;
 
     for (int i = 0; i < ast_count; ++i) {
         for(int j = 0; j < ast[i].machine_code_size; ++j)
-            fputc(ast[i].machine_code[j], out);
+            text[pos++] = ast[i].machine_code[j];
     }
-    fflush(out);
+    text[pos++] = 0x0f;
+    text[pos++] = 0x05;
+    
+    *textsize = pos;
 }
 
 
 int main(int argc, char **argv){
     if(argc < 2){
-        printf("AmmAsm v1.0 \nUsage: ./aasm <input.asm> \n");
+        printf("AmmAsm v1.0: \033[5;41mFatal: No file given\033[0m\n");
         return 1;
     }
     int pc = 0, line = 0;
+    static uint8_t text[1024 * 256]; // to biiiig for stack
+    int textsize = 0;
     FILE *input = fopen(argv[1], "r");
 
     line = LEXER(input);
     fclose(input); 
-    DEBUG_PRINT_TOKENS();
+    #ifdef DEBUG
+        DEBUG_PRINT_TOKENS();
+    #endif
     
     PARSE();
-    DEBUG_PRINT_AST();
+    #ifdef DEBUG
+        DEBUG_PRINT_AST();
+    #endif
 
-    printf("starting compile\n");
     for(int i = 0; i < ast_count; i++)
         parseInst(&ast[i], &pc, line);
-    printf("end compile\n");
 
     FILE *output = fopen("a.bin", "wb");
     if (!output) {
-        fprintf(stderr, "AmmAsm: Failed to create output.bin\n");
+        fprintf(stderr, "AmmAsm: Failed to create a.bin\n");
         return 1;
     }
-    Ammcompiler(output);
+    compiler(text, &textsize);
+    ELFgenfile(output, 0x401000, text, textsize, &pc);
+
     fclose(output);
     
-    printf("AmmAsm: Compiled successfully! Output: output.bin (%d bytes)\n", pc);
+    printf("AmmAsm: Compiled successfully! Output: a.bin (%d bytes)\n", pc);
     return 0;
 }
