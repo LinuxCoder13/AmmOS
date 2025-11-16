@@ -25,7 +25,7 @@
  * SOFTWARE.
  */
 
-//  #define DEBUG
+ #define DEBUG
 
 
 #include <stdio.h>
@@ -83,7 +83,7 @@
 // #define ASTEOF   0x03
 
 #define MAX_TOKENS 1024
-
+#define MAX_LABEL  256
                 
 // .rodata            
 const char *CMDS[] = {"mov", "push", "pop", "syscall", "call", "jmp", "add", "sub", 
@@ -103,59 +103,71 @@ const char *HUMAN_TOKEN[] = {"inst", "label", "reg", "[reg]", "[reg +-*/ value]"
 /* name of label can include only this chars */
 const char *LET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_";
 
-const char *LETEXT = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxy0123456789-_.";
+const char *LETEXT = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_.";
 const char* DIG    = "0123456789";
 const char* DIGEXT = "0123456789abcdef";
 const char* DIGBIN = "01";
 const char* DIGOCT = "01234567";
 
+// 8-bit low registers
 const char* regs8[] = {
-    "al", "bl", "cl", "dl",
-    "sil", "dil", "spl", "bpl",
+    "al", "cl", "dl", "bl",
+    "spl", "bpl", "sil", "dil",
     NULL
 };
 
+// 8-bit high registers (r8–r15)
 const char* regs8GP[] = {
     "r8b", "r9b", "r10b", "r11b",
     "r12b", "r13b", "r14b", "r15b",
     NULL
 };
 
+// 16-bit registers
 const char* regs16[] = {
-    "ax", "bx", "cx", "dx",
-    "si", "di", "sp", "bp",
+    "ax", "cx", "dx", "bx",
+    "sp", "bp", "si", "di",
     NULL
 };
 
+// 16-bit general-purpose (r8–r15)
 const char* regs16GP[] = {
     "r8w", "r9w", "r10w", "r11w",
     "r12w", "r13w", "r14w", "r15w",
     NULL
 };
 
+// 32-bit registers
 const char* regs32[] = {
-    "eax", "ebx", "ecx", "edx",
-    "esi", "edi", "esp", "ebp",
+    "eax", "ecx", "edx", "ebx",
+    "esp", "ebp", "esi", "edi",
     NULL
 };
 
+// 32-bit general-purpose (r8–r15)
 const char* regs32GP[] = {
     "r8d", "r9d", "r10d", "r11d",
     "r12d", "r13d", "r14d", "r15d",
     NULL
 };
 
+// 64-bit registers
 const char* regs64[] = {
-    "rax", "rbx", "rcx", "rdx",
-    "rsi", "rdi", "rsp", "rbp",
+    "rax", "rcx", "rdx", "rbx",
+    "rsp", "rbp", "rsi", "rdi",
     "rip", NULL // user can control inst-pointer
 };
 
+// 64-bit general-purpose (r8–r15)
 const char* regs64GP[] = {
     "r8", "r9", "r10", "r11",
     "r12", "r13", "r14", "r15",
     NULL
 };
+
+
+uint64_t pc = 0;
+int line = 0;
 
 typedef struct {
     int   type;       
@@ -276,6 +288,14 @@ void add_token(int type, char* value, int line){
     toks_count++;
 }
 
+#define del_token(tokidx) free(toks[tokidx].value);
+
+void del_all_toks(){
+    for(int i = MAX_TOKENS - 1; i >= 0; i--){
+        del_token(i);
+    }
+}
+
 int is_inst(char* s){
     for(int i=0; CMDS[i]; ++i){
         if(strcasecmp(s, CMDS[i]) == 0){
@@ -326,6 +346,18 @@ void DEBUG_PRINT_TOKENS() {
     printf("=== END TOKENS ===\n\n");
 }
 
+typedef struct {
+    uint8_t name[64];
+    uint64_t pc; // offset
+    uint64_t vpc; // pc + 0x400000
+    int resolved;
+    int defined;
+} Labels;
+
+Labels labels[MAX_TOKENS];
+short labels_count = 0;
+
+
 
 int is_reg(const char *s) __attribute__((__nonnull__(1)));
 int is_reg(const char *s){
@@ -365,8 +397,8 @@ int is_reg(const char *s){
     return 0;
 }
 
-int is_literal(char* s) __attribute__((__nonnull__(1)));
-int is_literal(char* s) {
+int is_literal(const char* s) __attribute__((__nonnull__(1)));
+int is_literal(const char* s) {
     if ((s[0] >= '0' && s[0] <= '9') || s[0] == '-') {
         return 1;
     }
@@ -387,9 +419,8 @@ char *read_string(char *buff, char *dest, int line) {
                 default : fprintf(stderr, "AmmAsm: invalid escape sequence on line %d\n", line); exit(1);
             }
         }
-        else {
-            *dest++ = *buff++;
-        }
+        else *dest++ = *buff++;
+        
     }
     return buff;
 }
@@ -440,8 +471,7 @@ int LEXER(FILE* fl) {
         fprintf(stderr, "AmmAsm:\033[;31m Fatal: no such file or dir\033[0m\n");
         exit(1);
     }
-    Lexer lexer = {0};
-    int line = 0;
+    Lexer lexer = {0}; 
     int in_comment = 0;
 
     while (fgets(lexer.buf, 256, fl) != NULL) {
@@ -472,24 +502,38 @@ int LEXER(FILE* fl) {
                 } else buff++;
                 continue;
             }
-            else if (isin(LET, *buff)) { // global label
+            else if (isin(LETEXT, *buff)) { // global label
                 char buf[256] = {0};
                 int i = 0;
-                while (isin(LETEXT, *buff)) {
+                while (isin(LETEXT, *buff) && i <= 256) {
                     buf[i++] = *buff++;
                 }
+                buf[i] = 0;
                 
+                while (*buff == ' ' || *buff == '\t') buff++;
+
+
                 if (*buff == ':') {
                     buff++;
                     strncpy(lexer.labelscope, buf, 256);
                     add_token(T_LAB, buf, line);
+                    continue;
                 }
                 else if (is2arrin(CMDS, buf)){
                     add_token(T_INS, buf, line);
+                    continue;
+                }
+                else if (*buff == '-' && *(buff+1) == '>') {
+                    buff += 2;
+                    add_token(T_ID, buf, line);
+                    continue;
                 }
                 else {
-                    add_token(T_ID, buf, line);
+                    
+                    fprintf(stderr, "AmmAsm: Can't define lab or id at line '%d'\n", line);
+                    exit(1);
                 }
+                continue;
             }
 
             else if (*buff == '.') { // local label
@@ -551,23 +595,24 @@ int LEXER(FILE* fl) {
                 buff++;
 
                 char parsed_str[256] = {0};
+                
                 buff = read_string(buff, parsed_str, line);
-
-                if(*buff == '"') buff++;
-                else {
+                printf("%s\n", buff);
+                if(!*buff == '"'){
                     fprintf(stderr, "AmmAsm: unterminated string literal at line %d\n", line);
-                    exit(1);
-                }
+                    exit(1);                    
+                } 
+                buff++;
+
                 add_token(T_STR, parsed_str, line);
                 continue;
             }
             else if (*buff == '\'') {
-                char tmp;
-
                 buff++; 
+                char tmp;      
 
                 if (*buff == '\\') {
-                    switch (*(buff + 1)) {
+                    switch (*++buff) {
                         case 'n': tmp = '\n'; break;
                         case 'r': tmp = '\r'; break;
                         case 't': tmp = '\t'; break;
@@ -579,17 +624,17 @@ int LEXER(FILE* fl) {
                             fprintf(stderr, "AmmAsm: Unknown escape sequence on line %d\n", line);
                             exit(1);
                     }
-                    buff += 2;
+                    buff++;
                 }
                 else tmp = *buff;
-                buff++;
-                
 
                 if (*buff != '\'') {
                     fprintf(stderr, "AmmAsm: Unterminated character literal on line %d\n", line);
                     exit(1);
                 }
-                /*else */buff++; 
+                
+                buff++; 
+                
                 char tmp2[2] = {tmp, '\0'};
                 add_token(T_CHAR, tmp2, line);
                 continue;
@@ -683,8 +728,9 @@ int LEXER(FILE* fl) {
                 while(isspace(*buff)) buff++;
                 add_token(T_COMMA, ",", line);
                 continue;
-            } 
-            else if(isin(LET, *buff)){
+            }
+            else if((*buff == 'u' || *buff == 'U') && isdigit(*(buff+1))){
+ID_LEX:
                 char buffer[56] = {0};
                 int i=0;
                 while (isin(LET, *buff) && i < (int)(sizeof(buffer)-1)){
@@ -739,6 +785,8 @@ typedef enum {
     AST_SECTION,
     AST_COMMA,
     AST_ADDR_EXPR,
+    AST_ID,
+    AST_CHAR,
     AST_UNKNOWN
 } ASTType;
 
@@ -750,7 +798,9 @@ typedef enum {
     O_REG64,
     O_IMM,
     O_MEM,
-    O_LABEL
+    O_LABEL,
+    O_CHAR,
+    O_ID
 } OperandType;
 
 // will be added more in future version
@@ -765,7 +815,7 @@ typedef struct AST {
     char cmd[256];  // mostly useing for ins
 
     union {     
-        struct { uint8_t operands[4][35]; OperandType otype[4]; int oper_count; } ins;
+        struct { uint8_t operands[4][35]; OperandType otype[4]; int oper_count; int resolved; } ins; // resolved -> for linking symbols
         struct { uint8_t data[256]; int size; } u8;
         struct { uint8_t *data[256]; int size; } u8ptr;
         struct { uint8_t data[256]; int size; } u16;
@@ -778,8 +828,10 @@ typedef struct AST {
         struct { uint64_t size; } resq;
         struct { uint64_t size; } resd;
         struct { uint64_t size; } resl;
-        struct { uint8_t name[64]; uint64_t adress; } label; // 64 bit adress
-        struct { uint8_t name[12]; uint64_t offset; uint32_t size; SECtype type;} section;
+        struct { uint8_t c;     } chr;
+        struct { uint8_t name[64]; uint64_t adress; uint64_t vadress; } id; // only can be in section what stores some data
+        struct { uint8_t name[64]; uint64_t adress; uint64_t vadress; uint8_t defined;} label; // only can be in .text section
+        struct { uint8_t name[64]; uint64_t offset; uint32_t size; SECtype type;} section;
     };
         uint8_t machine_code[256];
         int machine_code_size;
@@ -789,6 +841,7 @@ AST ast[MAX_TOKENS];
 int ast_count = 0;
 
 
+// this debuger was wroten by Deepseek
 void DEBUG_PRINT_AST() {
     printf("=== AST DUMP (%d nodes) ===\n", ast_count);
     for (int i = 0; i < ast_count; i++) {
@@ -810,8 +863,10 @@ void DEBUG_PRINT_AST() {
             case AST_RESD: type_str = "AST_RESD"; break;
             case AST_RESL: type_str = "AST_RESL"; break;
             case AST_LABEL: type_str = "AST_LABEL"; break;
+            case AST_ID: type_str = "AST_ID"; break;
             case AST_SECTION: type_str = "AST_SECTION"; break;
             case AST_ADDR_EXPR: type_str = "AST_ADDR_EXPR"; break;
+            case AST_CHAR: type_str = "AST_CHAR"; break;
         }
         
         printf("AST[%d]: type=%-15s", i, type_str);
@@ -830,15 +885,25 @@ void DEBUG_PRINT_AST() {
                         case O_IMM: otype_str = "IMM"; break;
                         case O_MEM: otype_str = "MEM"; break;
                         case O_LABEL: otype_str = "LABEL"; break;
+                        case O_ID: otype_str = "ID"; break;
+                        case O_CHAR: otype_str = "CHAR"; break;
                     }
                     printf(" [%s:'%s']", otype_str, node->ins.operands[j]);
                 }
                 break;
                 
             case AST_LABEL:
-                printf(" name='%s' addr=0x%lx", node->label.name, node->label.adress);
+                printf(" name='%s' addr=0x%lx  vaddr=0x%lx", node->label.name, node->label.adress, node->label.vadress);
                 break;
-                
+            
+            case AST_ID:
+                printf(" name='%s' addr=0x%lx", node->id.name, node->id.adress);
+                break;
+
+            case AST_CHAR:
+                printf(" name='%c'", node->chr.c);    
+                break;
+
             case AST_U8:
                 printf(" size=%d data=[", node->u8.size);
                 for (int j = 0; j < node->u8.size; j++) {
@@ -910,11 +975,118 @@ void DEBUG_PRINT_AST() {
     printf("=== END AST ===\n\n");
 }
 
+/* post-link resolve O(n^2) */
+
+void collect_labels() {
+    uint64_t current_pc = 0x401000; // .text section starts here btw
+    
+    for (int i = 0; i < ast_count; i++) {
+        if (ast[i].type == AST_LABEL) {
+            ast[i].label.adress = current_pc; // i might got screwed
+            ast[i].label.vadress = current_pc;
+            ast[i].label.defined = 1;
+            
+            #ifdef DEBUG
+            printf("Label '%s' at 0x%lx\n", ast[i].label.name, current_pc);
+            #endif
+        }
+        else if (ast[i].type == AST_INS && ast[i].machine_code_size > 0) {
+            current_pc += ast[i].machine_code_size;
+        }
+    }
+}
+
+// Ammlinker
+void resolve_labels() {
+    for (int i = 0; i < ast_count; i++) {
+        AST* node = &ast[i];
+        
+        if (node->type != AST_INS || node->ins.resolved) continue;
+        
+        // MOV r64, label
+        if (strcasecmp(node->cmd, "mov") == 0 && node->ins.otype[0] == O_REG64 && node->ins.otype[1] == O_LABEL) {
+            const char* label_name = node->ins.operands[1];
+            uint64_t label_addr = 0;
+            int found = 0;
+            
+            // must be more tracking devices, find them all!
+            for (int j = 0; j < ast_count; j++) {
+                if (ast[j].type == AST_LABEL && 
+                    strcmp(ast[j].label.name, label_name) == 0) {
+                    label_addr = ast[j].label.vadress;
+                    found = 1;
+                    break;
+                }
+            }
+            
+            if (!found) {
+                fprintf(stderr, "AmmAsm: Undefined label '%s'\n", label_name);
+                exit(1);
+            }
+            
+            // MOV r64, imm64
+            As64(label_addr, &node->machine_code[2]);
+            node->ins.resolved = 1;
+        }
+        
+        // JMP/CALL label (REL32)
+        else if ((strcasecmp(node->cmd, "jmp") == 0 || 
+                  strcasecmp(node->cmd, "call") == 0) &&
+                 node->ins.otype[0] == O_LABEL) {
+            
+            const char* label_name = node->ins.operands[0];
+            uint64_t label_addr = 0;
+            int found = 0;
+            
+            for (int j = 0; j < ast_count; j++) {
+                if (ast[j].type == AST_LABEL && 
+                    strcmp(ast[j].label.name, label_name) == 0) {
+                    label_addr = ast[j].label.vadress;
+                    found = 1;
+                    break;
+                }
+            }
+            
+            if (!found) {
+                fprintf(stderr, "AmmAsm: Undefined label '%s' in %s\n", 
+                        label_name, node->cmd);
+                exit(1);
+            }
+            
+            uint64_t current_pc = 0x401000;
+            for (int k = 0; k < i; k++) {
+                if (ast[k].type == AST_INS && ast[k].machine_code_size > 0) {
+                    current_pc += ast[k].machine_code_size;
+                }
+            }
+            int32_t rel32 = (int32_t)(label_addr - (current_pc + 5));
+            
+            #ifdef DEBUG
+            printf("Resolving %s %s: target=0x%lx, current=0x%lx, offset=%d\n",
+                   node->cmd, label_name, label_addr, current_pc, rel32);
+            #endif
+            
+            As32((uint32_t)rel32, &node->machine_code[1]);
+            node->ins.resolved = 1;
+        }
+        // SOON....
+    }
+}
+
+// for debug func(s)
+
+uint64_t get_lab_addr(const char* name){
+    for(int i=0; i<ast_count; i++){
+        if(strcmp(ast[i].label.name, name)){
+            return ast[i].label.adress;
+        }
+    }
+    return -1;
+}
 
 // parser:
 AST* PARSE(){
     int pos = 0;
-    uint64_t pc = 0;
 
     while(pos < toks_count && toks[pos].type != T_EOF){
         Token *tok = &toks[pos];
@@ -930,7 +1102,7 @@ AST* PARSE(){
                 else if(toks[pos].type == T_REG8 || toks[pos].type == T_REG16 ||
                         toks[pos].type == T_REG32 || toks[pos].type == T_REG64){
                     int tt = toks[pos].type;
-                    strncpy(node.ins.operands[node.ins.oper_count], toks[pos++].value, 36);
+                    strncpy(node.ins.operands[node.ins.oper_count], toks[pos++].value, 35);
                     switch (tt) {
                         case T_REG8:  node.ins.otype[node.ins.oper_count++] = O_REG8;  break;
                         case T_REG16: node.ins.otype[node.ins.oper_count++] = O_REG16; break;
@@ -957,25 +1129,44 @@ AST* PARSE(){
                     node.ins.otype[node.ins.oper_count++] = O_IMM;
                     continue;
                 }
+                else if(toks[pos].type == T_ID){
+                    strncpy(node.ins.operands[node.ins.oper_count], toks[pos].value, sizeof node.id.name);
+                    pos++;
+                    node.ins.otype[node.ins.oper_count++] = O_ID;
+                    continue;
+                }
+                else if(toks[pos].type == T_CHAR){
+                    node.ins.operands[node.ins.oper_count][0] = toks[pos].value[0]; // okay?
+                    node.ins.operands[node.ins.oper_count][1] = '\0'; // okay?
+                    node.ins.otype[node.ins.oper_count++] = O_CHAR;
+                    pos++;
+                    continue;
+                }
                 else if(toks[pos].type == T_EOL || toks[pos].type == T_EOF){
                     break;
                 }
                 else {
-                    fprintf(stderr, "AmmAsm: Unexpected token type %d at line %d\n", 
-                            toks[pos].type, toks[pos].line);
-                    pos++; 
+                    fprintf(stderr, "AmmAsm: Unexpected token \"%s\" at line %d\n", toks[pos].value, toks[pos].line);
+                    exit(1); 
                 }
             }
             ast[ast_count++] = node;
             if (pos < toks_count && toks[pos].type == T_EOL) ++pos;
             continue;
         }
-
+        if(tok->type == T_ID){
+            node.type = AST_ID;
+            if(tok->type != T_EOF && tok->type != T_EOL){
+                strncpy(node.id.name, toks[pos++].value, sizeof(node.id.name));
+            }
+            ast[ast_count++] = node;
+            ++pos;
+            continue;            
+        }
         if(tok->type == T_LAB){
             node.type = AST_LABEL;
             if(tok->type != T_EOF && tok->type != T_EOL){
                 strncpy(node.label.name, toks[pos++].value, sizeof(node.label.name));
-                node.label.adress = pc;
             }
             ast[ast_count++] = node;
             ++pos;
@@ -988,14 +1179,13 @@ AST* PARSE(){
                 if (toks[pos].type == T_EOL || toks[pos].type == T_EOF) break;
                 if(toks[pos].type == T_COMMA){ pos++; continue;} // skip this shit
                 if (node.u8.size >= 256) { fprintf(stderr, "AmmAsm: Too many bytes in string literal at line %d\n", toks[pos].line); exit(1); }
+                
                 if(toks[pos].type == T_CHAR){ 
                     node.u8.data[node.u8.size++] = (unsigned char)toks[pos].value[0];
-                    ++pc;
                     pos++;
                 }
                 else if(toks[pos].type == T_INT){   // can be hex, octal, des see line 417
                     node.u8.data[node.u8.size++] = (unsigned char)atoi(toks[pos].value);
-                    ++pc;
                     pos++;
                 }
                 else if(toks[pos].type == T_STR){
@@ -1003,7 +1193,6 @@ AST* PARSE(){
                     while (*s) {
                     if (node.u8.size >= sizeof(node.u8.data)){ fprintf(stderr, "AmmAsm: String too long in U8 directive at line %d\n", toks[pos].line); exit(1);}
                         node.u8.data[node.u8.size++] = (unsigned char)*s++;
-                        ++pc;
                     }
                     pos++;
                 }
@@ -1031,9 +1220,7 @@ AST* PARSE(){
                         fprintf(stderr, "AmmAsm: too many u8ptr (max. 256)\n");
                         exit(1);
                     }
-                    node.u8ptr.data[node.u8ptr.size++] = (char *)toks[pos].value;
-                    
-                    pc += sizeof(char *);
+                    strncpy(node.u8ptr.data[node.u8ptr.size++], toks[pos].value, 256);
                     pos++;
                 }
                 else if (toks[pos].type == T_INT && atoi(toks[pos].value) == 0) {
@@ -1042,7 +1229,6 @@ AST* PARSE(){
                         exit(1);
                     }
                     node.u8ptr.data[node.u8ptr.size++] = ((void*)0);
-                    pc += sizeof(char *);
                     pos++;
                 }
                 else {
@@ -1090,12 +1276,10 @@ AST* PARSE(){
 
                 if(toks[pos].type == T_ID){
                     node.u16ptr.data[node.u16ptr.size++] = toks[pos].value;
-                    pc += 8;
                     ++pos;
                 }
                 else if(toks[pos].type == T_INT && atoi(toks[pos].value) == 0){
                     node.u16ptr.data[node.u16ptr.size] = ((void*)0);
-                    pc += 8;
                     pos++;
                 }
                 else {
@@ -1117,7 +1301,6 @@ AST* PARSE(){
                 if (node.u32.size >= 256){ fprintf(stderr, "AmmAsm: Too many u32 at line %d\n", toks[pos].line); exit(1);}
                 if (toks[pos].type == T_INT) {
                     node.u32.data[node.u32.size++] = atoi(toks[pos].value);
-                    pc += sizeof(int);
                     pos++;
                 } 
                 else {
@@ -1141,12 +1324,10 @@ AST* PARSE(){
 
                 if(toks[pos].type == T_ID){
                     node.u32ptr.data[node.u32ptr.size++] = toks[pos].value;
-                    pc += 8;
                     ++pos;
                 }
                 else if(toks[pos].type == T_INT && atoi(toks[pos].value) == 0){
                     node.u32ptr.data[node.u32ptr.size] = ((void*)0);
-                    pc += 8;
                     pos++;
                 }
                 else {
@@ -1168,7 +1349,6 @@ AST* PARSE(){
                 if (node.u64.size >= 256){ fprintf(stderr, "AmmAsm: Too many u64 at line %d\n", toks[pos].line); exit(1);}
                 if (toks[pos].type == T_INT) {
                     node.u64.data[node.u64.size++] = atoi(toks[pos].value);
-                    pc += sizeof(long);
                     pos++;
                 } 
                 else {
@@ -1192,12 +1372,10 @@ AST* PARSE(){
 
                 if(toks[pos].type == T_ID){
                     node.u64ptr.data[node.u64ptr.size++] = toks[pos].value;
-                    pc += 8;
                     ++pos;
                 }
                 else if(toks[pos].type == T_INT && atoi(toks[pos].value) == 0){
                     node.u64ptr.data[node.u64ptr.size] = ((void*)0);
-                    pc += 8;
                     pos++;
                 }
                 else {
@@ -1238,6 +1416,8 @@ AST* PARSE(){
             pos++;
         }
     }
+
+    del_all_toks();
     return ast; // for debug
 }
 // How cpu see regs
@@ -1294,13 +1474,14 @@ int find_reg8_index(const char* reg) {
     return -1;
 }
 
+
 /*
 ===============================================================================
-Address Expression Parsing Rules — AmmAsm2 (x86-64)
+Address Expression Parsing Rules - AmmAsm (x86-64)
 ===============================================================================
 
-Unlike NASM/MASM, AmmAsm2 uses a *key-based format* for clarity and predictable parsing.  
-No brackets, no “pretty” syntax — everything is explicitly labeled:
+Unlike NASM/MASM, AmmAsm uses a *key-based format* for clarity and predictable parsing.  
+No brackets, no “pretty” syntax - everything is explicitly labeled:
 we parse expressions like:
 
     b=rbx, i=rcx, s=4, d=0x10
@@ -1314,10 +1495,10 @@ to actual x86-64 SIB/modRM encoding logic.
 Allowed Keys:
 ===============================================================================
 
-    b=REG or b=ADDR      → base register (e.g. rax) or numeric address (0xB8000)
-    i=REG                → index register (e.g.rcx)
-    s=NUM                → scale (1, 2, 4, 8 only)
-    d=NUM or HEX or BIN  → displacement (e.g. 16, 0x10, 0b1010)
+    b=REG or b=ADDR      -> base register (e.g. rax) or numeric address (0xB8000)
+    i=REG                -> index register (e.g.rcx)
+    s=NUM                -> scale (1, 2, 4, 8 only)
+    d=NUM or HEX or BIN  -> displacement (e.g. 16, 0x10, 0b1010)
 
 Each key is optional, but you must specify at least one of:
     base (b), index (i), or displacement (d)
@@ -1346,7 +1527,7 @@ Invalid (rejected at parse time):
 Parsing Algorithm
 ===============================================================================
 
-1) Split expression by commas → read tokens like `b=rax`, `i=rcx`, `s=4`, `d=0x10`
+1) Split expression by commas -> read tokens like `b=rax`, `i=rcx`, `s=4`, `d=0x10`
 2) For each token:
       - skip spaces
       - identify the key (b, i, s, d)
@@ -1354,10 +1535,10 @@ Parsing Algorithm
             * registers: stored as strings (`rax`)
             * numbers: auto-detected base (0x, 0b, 0o, decimal)
 3) Validate:
-      - if `scale` exists → `index` must exist
-      - if `index == rsp` → error
-      - if `scale` not in {1,2,4,8} → error
-      - if nothing set → error
+      - if `scale` exists -> `index` must exist
+      - if `index == rsp` -> error
+      - if `scale` not in {1,2,4,8} -> error
+      - if nothing set -> error
 4) Store result in `AddrExpr`:
       base_reg, index_reg, disp_val, scale, base_is_reg, index_exists
 
@@ -1365,11 +1546,11 @@ Parsing Algorithm
 Design Purpose
 ===============================================================================
 
-No ambiguity — each field explicit (`b=`, `i=`, `s=`, `d=`)  
+No ambiguity - each field explicit (`b=`, `i=`, `s=`, `d=`)  
 Easy to parse using simple `if(*p == 'b')` etc.  
 Simple validation without complex expression grammar  
 Maps directly to SIB/modRM logic for encoder  
-Perfect for JIT/compilers — minimal string parsing
+Perfect for JIT/compilers - minimal string parsing
 
 ===============================================================================
 Example:
@@ -1410,7 +1591,7 @@ typedef struct {
 
 
 // this function will return 1 fully parsed addexpr for sib_gen_byte() 
-// parsing only GPR registers
+// parsing only GP registers (rax..r15)
 AddrExpr parse_addr_expr(const char* expr , int line) {
     AddrExpr new = { 0 };
     new.scale = 1; // base value
@@ -1551,7 +1732,7 @@ uint8_t gen_SIB_byte(AddrExpr input) {
 #define REX_X     0b00000010
 #define REX_B     0b00000001
 
-void parseInst(AST* node, int* pc, int line) {
+void parseInst(AST* node) {
     if (node->type != AST_INS) return;
 
     memset(node->machine_code, 0, sizeof(node->machine_code));
@@ -1592,7 +1773,7 @@ void parseInst(AST* node, int* pc, int line) {
         
         // MOV R64, IMM64
         if ((is2arrin(regs64, node->ins.operands[0]) || is2arrin(regs64GP, node->ins.operands[0])) 
-            && node->ins.otype[1] == O_IMM) {
+            && (node->ins.otype[1] == O_IMM || node->ins.otype[1] == O_CHAR)) {
 
             uint8_t rex = REX_BASE | REX_W; // 0x48 or 0x49
             uint8_t opcode = 0xB8;
@@ -1614,13 +1795,13 @@ void parseInst(AST* node, int* pc, int line) {
             As64((uint64_t)imm64, &node->machine_code[2]);
 
             *s = 10;
-            *pc += 10;
+            pc += 10;
             return;
         }
 
         // MOV R32, IMM32
         else if ((is2arrin(regs32, node->ins.operands[0]) || is2arrin(regs32GP, node->ins.operands[0])) 
-                && node->ins.otype[1] == O_IMM) {
+                && (node->ins.otype[1] == O_IMM || node->ins.otype[1] == O_CHAR)) {
 
             uint8_t rex = 0;
             uint32_t imm32 = (uint32_t)atoi(node->ins.operands[1]);
@@ -1644,13 +1825,13 @@ void parseInst(AST* node, int* pc, int line) {
             pos += 4;
 
             *s = pos;
-            *pc += pos;
+            pc += pos;
             return;
         }
 
         // MOV R16, IMM16
         else if ((is2arrin(regs16, node->ins.operands[0]) || is2arrin(regs16GP, node->ins.operands[0])) 
-                && node->ins.otype[1] == O_IMM) {
+                && (node->ins.otype[1] == O_IMM || node->ins.otype[1] == O_CHAR)) {
 
             uint8_t rex = 0;
             uint16_t imm16 = (uint16_t)atoi(node->ins.operands[1]);
@@ -1675,21 +1856,28 @@ void parseInst(AST* node, int* pc, int line) {
             pos += 2;
 
             *s = pos;
-            *pc += pos;
+            pc += pos;
             return;
         }
 
-        // MOV R8, IMM8
+        // MOV R8, IMM8/CHAR
         else if ((is2arrin(regs8, node->ins.operands[0]) || is2arrin(regs8GP, node->ins.operands[0])) 
-                && node->ins.otype[1] == O_IMM) {
-
+                && (node->ins.otype[1] == O_IMM || node->ins.otype[1] == O_CHAR)) {         
             uint8_t rex = 0;
+            uint8_t c   = node->ins.operands[1][0];
             uint8_t imm8 = (uint8_t)atoi(node->ins.operands[1]);
             uint8_t opcode = 0xB0;
             int reg_num = -1;
 
             if ((reg_num = indexof(regs8, node->ins.operands[0])) != -1) {
-                // al..dil: no REX (or REX if using sil/dil/bpl/spl)
+                // ah, bh, ch, dh - not supported
+                for(int8_t i = 4; i <= 7; i++){
+                    if (!strcasecmp(node->ins.operands[0], regs8[i])) {
+                        rex = REX_BASE; 
+                        reg_num = i;
+                        break; // ??
+                    }
+                }
             }
             else if ((reg_num = indexof(regs8GP, node->ins.operands[0])) != -1) {
                 rex = REX_BASE | REX_B; // r8b..r15b
@@ -1701,12 +1889,13 @@ void parseInst(AST* node, int* pc, int line) {
             int pos = 0;
             if (rex) node->machine_code[pos++] = rex;
             node->machine_code[pos++] = opcode;
-            node->machine_code[pos++] = imm8;
+            node->machine_code[pos++] = (node->ins.otype[1] == O_IMM) ? imm8 : c;
 
             *s = pos;
-            *pc += pos;
+            pc += pos;
             return;
         }
+
 
         // ========================================================================
         // 2. MOV REG, REG (reg ← reg) (mod = 11)
@@ -1739,7 +1928,7 @@ void parseInst(AST* node, int* pc, int line) {
             node->machine_code[2] = modrm;
 
             *s = 3;
-            *pc += 3;
+            pc += 3;
             return;
         }
 
@@ -1773,7 +1962,7 @@ void parseInst(AST* node, int* pc, int line) {
             node->machine_code[pos++] = modrm;
 
             *s = pos;
-            *pc += pos;
+            pc += pos;
             return;
         }
 
@@ -1808,7 +1997,7 @@ void parseInst(AST* node, int* pc, int line) {
             node->machine_code[pos++] = modrm;
 
             *s = pos;
-            *pc += pos;
+            pc += pos;
             return;
         }
 
@@ -1827,11 +2016,19 @@ void parseInst(AST* node, int* pc, int line) {
                 rex |= REX_B;
             }
 
+            else if (dst_index >= 4 && dst_index <= 7) {
+                rex = REX_BASE;  // SPL, BPL, SIL, DIL 
+            }
+
             int src_index = indexof(regs8, node->ins.operands[1]);
             if (src_index == -1) {
                 src_index = indexof(regs8GP, node->ins.operands[1]);
                 if (src_index == -1) return;
                 rex |= REX_R;
+            }
+
+            else if (src_index >= 4 && src_index <= 7) {
+                rex = REX_BASE;  // SPL, BPL, SIL, DIL 
             }
 
             modrm |= ((src_index & 7) << 3) | (dst_index & 7);
@@ -1842,7 +2039,7 @@ void parseInst(AST* node, int* pc, int line) {
             node->machine_code[pos++] = modrm;
 
             *s = pos;
-            *pc += pos;
+            pc += pos;
             return;
         }
 
@@ -1930,7 +2127,7 @@ void parseInst(AST* node, int* pc, int line) {
             }
 
             *s = pos;
-            *pc += pos;
+            pc += pos;
         }
 
         // MOV R32, [ADDR]
@@ -2010,7 +2207,7 @@ void parseInst(AST* node, int* pc, int line) {
             }
 
             *s = pos;
-            *pc += pos;
+            pc += pos;
         }
 
         // MOV R16, [ADDR]
@@ -2091,7 +2288,7 @@ void parseInst(AST* node, int* pc, int line) {
             }
 
             *s = pos;
-            *pc += pos;
+            pc += pos;
         }
 
         // MOV R8, [ADDR]
@@ -2171,7 +2368,7 @@ void parseInst(AST* node, int* pc, int line) {
             }
 
             *s = pos;
-            *pc += pos;
+            pc += pos;
         }
 
         // ========================================================================
@@ -2256,7 +2453,7 @@ void parseInst(AST* node, int* pc, int line) {
             }
 
             *s = pos;
-            *pc += pos;
+            pc += pos;
         }
 
         // MOV [ADDR], R32
@@ -2336,7 +2533,7 @@ void parseInst(AST* node, int* pc, int line) {
             }
 
             *s = pos;
-            *pc += pos;
+            pc += pos;
         }
 
         // MOV [ADDR], R16
@@ -2417,7 +2614,7 @@ void parseInst(AST* node, int* pc, int line) {
             }
 
             *s = pos;
-            *pc += pos;
+            pc += pos;
         }
 
         // MOV [ADDR], R8
@@ -2497,7 +2694,7 @@ void parseInst(AST* node, int* pc, int line) {
             }
 
             *s = pos;
-            *pc += pos;
+            pc += pos;
         }
 
         // ========================================================================
@@ -2505,12 +2702,13 @@ void parseInst(AST* node, int* pc, int line) {
         // ========================================================================
 
         // MOV [ADDR], IMM32 (for 64-bit) 
-        else if (node->ins.otype[0] == O_MEM && node->ins.otype[1] == O_IMM) {
+        else if (node->ins.otype[0] == O_MEM && (node->ins.otype[1] == O_IMM || node->ins.otype[1] == O_CHAR)) {
             AddrExpr parsed = parse_addr_expr(node->ins.operands[0], line);
             int imm_size = 4; // default: 32-bit
             uint8_t opcode = 0xC7; // MOV r/m32, imm32
             uint8_t rex = 0;
             uint8_t prefix = 0;
+            uint8_t c = 0;
             
             long imm_val = (long)atoll(node->ins.operands[1]);
             
@@ -2598,15 +2796,41 @@ void parseInst(AST* node, int* pc, int line) {
                 pos += 2;
             }
             else if (imm_size == 1) {
-                node->machine_code[pos++] = (uint8_t)imm_val;
+                node->machine_code[pos++] = (node->ins.otype[1] == O_CHAR) ? (uint8_t)imm_val : (uint8_t)c ;
             }
 
             *s = pos;
-            *pc += pos;
+            pc += pos;
+        }
+        // MOV R64, LABEL
+        else if ((is2arrin(regs64, node->ins.operands[0]) || is2arrin(regs64GP, node->ins.operands[0])) 
+            && node->ins.otype[1] == O_LABEL) {
+
+            uint8_t rex = REX_BASE | REX_W; 
+            uint8_t opcode = 0xB8;
+            int reg_num = -1;
+
+            if ((reg_num = indexof(regs64, node->ins.operands[0])) != -1) {
+                // rax..rdi
+            } 
+            else if ((reg_num = indexof(regs64GP, node->ins.operands[0])) != -1) {
+                rex |= REX_B; 
+            } 
+            else return;
+
+            opcode += reg_num;
+            node->machine_code[0] = rex;
+            node->machine_code[1] = opcode;
+            As64(0x0000000000000000, &node->machine_code[2]); // placeholder
+
+            *s = 10;
+            pc += 10;
+            node->ins.resolved = 0; // !!!
+            return;
         }
     }
 
-    // место для дукументации для add
+    // место для документации для add
 
     else if(strcasecmp(node->cmd, "add") == 0){
         
@@ -2623,7 +2847,18 @@ void parseInst(AST* node, int* pc, int line) {
             int pos = 0;
             uint8_t rm = 0;
 
+
             int idx = find_reg64_index(node->ins.operands[0]);
+            
+            // Special case
+            if(idx == 0b000){  // rax
+                node->machine_code[0] = 0x05;
+                As32(imm32, &node->machine_code[1]);
+                *s = 5;
+                pc += 5;
+                return;
+            }         
+            
             if(idx != -1) { rm = idx; if(rm >= 8) rex |= REX_B; }
             modrm = (0b11 << 6) | (0 << 3) | (rm & 7);
 
@@ -2634,7 +2869,7 @@ void parseInst(AST* node, int* pc, int line) {
             pos += 4;
 
             *s = pos; // 7
-            *pc += pos;
+            pc += pos;
         }
 
         // add r/m32, imm32
@@ -2653,7 +2888,7 @@ void parseInst(AST* node, int* pc, int line) {
                 node->machine_code[0] = 0x05;
                 As32(imm32, &node->machine_code[1]);
                 *s = 5;
-                *pc += 5;
+                pc += 5;
                 return;
             }
             
@@ -2667,7 +2902,7 @@ void parseInst(AST* node, int* pc, int line) {
             pos += 4;
 
             *s = pos; 
-            *pc += pos;
+            pc += pos;
         }
 
         // add r/m16, imm16
@@ -2688,7 +2923,7 @@ void parseInst(AST* node, int* pc, int line) {
                 node->machine_code[1] = 0x05;
                 As16(imm16, &node->machine_code[2]);
                 *s = 4;
-                *pc += 4;
+                pc += 4;
                 return;
             } 
 
@@ -2703,17 +2938,20 @@ void parseInst(AST* node, int* pc, int line) {
             pos += 2;
 
             *s = pos; 
-            *pc += pos;
+            pc += pos;
         }
 
         // add r/m8, imm8
-        else if(node->ins.otype[0] == O_REG8 && node->ins.otype[1] == O_IMM){
+        else if(node->ins.otype[0] == O_REG8 && 
+            (node->ins.otype[1] == O_IMM || node->ins.otype[1] == O_CHAR)){
+            
             uint8_t opcode = 0x80; // add r/m8, imm8
             uint8_t modrm  = 0;
             uint8_t rex    = 0; 
             uint8_t imm8 = (uint8_t)atoi(node->ins.operands[1]);
             int pos = 0;
             uint8_t rm = 0;
+            uint8_t c = 0;
 
             int idx = find_reg8_index(node->ins.operands[0]);
             
@@ -2722,7 +2960,7 @@ void parseInst(AST* node, int* pc, int line) {
                 node->machine_code[0] = 0x04;
                 node->machine_code[1] = imm8;
                 *s = 2;
-                *pc += 2;
+                pc += 2;
                 return;
             }
 
@@ -2735,7 +2973,7 @@ void parseInst(AST* node, int* pc, int line) {
             node->machine_code[pos++] = imm8;
 
             *s = pos; 
-            *pc += pos;
+            pc += pos;
         }
 
         // ===========================================
@@ -2743,13 +2981,61 @@ void parseInst(AST* node, int* pc, int line) {
         // ===========================================
         // SOON.....
     }
+
+    // место для документации jmp/call
+    
+    else if(!strcasecmp(node->cmd, "jmp") || !strcasecmp(node->cmd, "call")) {
+        
+        // =========================
+        // JMP/CALL label (REL32)
+        // =========================
+        if(node->ins.otype[0] == O_LABEL) { 
+            uint8_t opcode = (!strcasecmp(node->cmd, "jmp")) ? 0xE9 : 0xE8;
+            
+            node->machine_code[0] = opcode;
+            As32(0x00000000, &node->machine_code[1]);
+            
+            *s = 5;
+            pc += 5;
+            node->ins.resolved = 0; // for linker
+            return;
+        }
+        
+        // =========================
+        // JMP/CALL r64 (FAR)
+        // =========================
+        else if(node->ins.otype[0] == O_REG64) {
+            uint8_t rex = REX_BASE | REX_W;
+            uint8_t opcode = 0xFF;
+            uint8_t modrm;
+            
+            int reg_idx = find_reg64_index(node->ins.operands[0]);
+            if(reg_idx >= 8) rex |= REX_B;
+            
+            // ModR/M: mod=11 (register), reg=extension, rm=register
+            if(!strcasecmp(node->cmd, "jmp")) {
+                modrm = 0xE0 | (reg_idx & 7); // /4 = 100 in reg field
+            } 
+            else {
+                modrm = 0xD0 | (reg_idx & 7); // /2 = 010 in reg field
+            }
+            
+            node->machine_code[0] = rex;
+            node->machine_code[1] = opcode;
+            node->machine_code[2] = modrm;
+            
+            *s = 3;
+            pc += 3;
+            return;
+        }
+    }
 }
 
 
-void ELFgenfile(FILE *fl, uint64_t e_entry, uint8_t *text_code, uint64_t text_size, int *pc) {
+void ELFgenfile(FILE *fl, uint64_t e_entry, uint8_t *text_code, uint64_t text_size) {
     if (!fl) return;
 
-    // === ELF Header ===
+    // ELF Header
     unsigned char elf_header[64] = {
         0x7F,'E','L','F', 0x02,0x01,0x01,0x00,
         0,0,0,0,0,0,0,0,
@@ -2765,14 +3051,13 @@ void ELFgenfile(FILE *fl, uint64_t e_entry, uint8_t *text_code, uint64_t text_si
     };
 
     uint64_t text_offset = 0x1000; 
-    uint64_t text_vaddr  = 0x401000; 
-    uint64_t entry        = text_vaddr; // e_entry должен быть виртуальным адресом
+    uint64_t text_vaddr  = e_entry; 
 
-    memcpy(&elf_header[0x18], &entry, 8);
+    memcpy(&elf_header[0x18], &e_entry, 8);
     fwrite(elf_header, 1, 64, fl);
-    *pc += 64;
+    pc += 64;
 
-    // === Program Header (.text RX) ===
+    //  Program Header (.text RX) 
     uint8_t phdr[56] = {
         0x01,0x00,0x00,0x00, // p_type PT_LOAD
         0x05,0x00,0x00,0x00, // p_flags PF_R | PF_X
@@ -2791,35 +3076,38 @@ void ELFgenfile(FILE *fl, uint64_t e_entry, uint8_t *text_code, uint64_t text_si
     memcpy(&phdr[40], &text_size,   8);
 
     fwrite(phdr, 1, 56, fl);
-    *pc += 56;
+    pc += 56;
 
-    // === Padding till 0x1000 ===
+    // Padding till 0x1000
     uint64_t padding_size = 0x1000 - (64 + 56);
     uint8_t *padding = calloc(1, padding_size);
     fwrite(padding, 1, padding_size, fl);
     free(padding);
-    *pc += padding_size;
+    pc += padding_size;
 
-    // === .text section ===
+    //.text section 
     fwrite(text_code, 1, text_size, fl);
-    *pc += text_size;
 }
-
-
-
-
 
 void compiler(uint8_t *text, int *textsize) {
     if (!text) return;
+    int pos = 0;
 
-    uint64_t pos = 0;
+    for(int i = 0; i < ast_count; i++)
+        parseInst(&ast[i]);
+
+    collect_labels();
+    resolve_labels();
 
     for (int i = 0; i < ast_count; ++i) {
         for(int j = 0; j < ast[i].machine_code_size; ++j)
             text[pos++] = ast[i].machine_code[j];
     }
-    text[pos++] = 0x0f;
+
+    // this will be removed in next version (1.3)
+    text[pos++] = 0x0f;  // syscall
     text[pos++] = 0x05;
+    pc += 2;
 
     *textsize = pos;
 }
@@ -2830,32 +3118,33 @@ int main(int argc, char **argv){
         printf("AmmAsm v1.1: \033[5;41mFatal: No file given\033[0m\n");
         return 1;
     }
-    int pc = 0, line = 0;
-    static uint8_t text[1024 * 256]; // to biiiig for stack
+    // .bss
+    static uint8_t text[1024 * 256] ; // to biiiig for stack
     int textsize = 0;
     FILE *input = fopen(argv[1], "r");
 
     line = LEXER(input);
-    fclose(input); 
+    fclose(input);
+
     #ifdef DEBUG
         DEBUG_PRINT_TOKENS();
     #endif
     
     PARSE();
+    
     #ifdef DEBUG
         DEBUG_PRINT_AST();
     #endif
-
-    for(int i = 0; i < ast_count; i++)
-        parseInst(&ast[i], &pc, line);
 
     FILE *output = fopen("a.bin", "wb");
     if (!output) {
         fprintf(stderr, "AmmAsm: Failed to create a.bin\n");
         return 1;
     }
+
+    // 1v1 me on sword coward?
     compiler(text, &textsize);
-    ELFgenfile(output, 0x401000, text, textsize, &pc);
+    ELFgenfile(output, 0x401000, text, textsize);
 
     fclose(output);
     
