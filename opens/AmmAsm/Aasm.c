@@ -3115,7 +3115,7 @@ void compiler(uint8_t *text, int *textsize) {
 
 int main(int argc, char **argv){
     if(argc < 2){
-        printf("AmmAsm v1.1: \033[5;41mFatal: No file given\033[0m\n");
+        printf("AmmAsm v1.2: \033[5;41mFatal: No file given\033[0m\n");
         return 1;
     }
     // .bss

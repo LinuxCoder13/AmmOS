@@ -101,24 +101,12 @@ mov %rax, -10       ; Negative numbers
 ### Labels
 ```asm
 ; Global labels
+exit:
+    mov %rdi, 42
+    syscall
 _start:
     mov %rax, 60
     jmp exit
-
-main:
-    call print_hello
-    ret
-
-; Local labels (scoped to previous global)
-loop_func:
-    mov %rcx, 10
-.loop:
-    dec %rcx
-    jnz .loop       ; jumps to loop_func.loop
-    ret
-
-exit:
-    syscall
 ```
 
 ### Memory Addressing
@@ -152,44 +140,12 @@ add %eax, 42        ; 32-bit
 add %ax, 42         ; 16-bit
 add %al, 42         ; 8-bit
 ```
-
 ---
-
-## 📋 Example Program
-
-**input.asm:**
-```asm
-!section .text
-
-_start:
-    mov %rax, 60        ; sys_exit
-    mov %rdi, 0         ; exit code
-    call exit
-
-print_hello:
-    mov %rax, 1         ; sys_write
-    mov %rdi, 1         ; stdout
-    mov %rsi, msg       ; buffer address
-    mov %rdx, 13        ; length
-    syscall
-    ret
-
-exit:
-    syscall
-
-msg:
-    u8 "Hello World!", 0xa
-```
 
 **Compile and run:**
 ```bash
 ./aasm input.asm
 ./a.bin # ELF64
-```
-
-**Output:**
-```
-Hello World!
 ```
 
 ---
