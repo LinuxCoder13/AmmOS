@@ -1,6 +1,6 @@
-# AmmAsm - Minimal x86-64 Assembler
+# AmmAsm - x86-64 Assembler
 
-**Version:** 1.2  
+**Version:** 1.3  
 **Author:** Ammar Najafli  
 **License:** MIT  
 
@@ -14,6 +14,7 @@ AmmAsm is a lightweight, handwritten x86-64 assembler designed for simplicity an
 ✅ **Multiple operand sizes** - 8/16/32/64-bit registers and immediates  
 ✅ **Memory addressing** - Full SIB/ModRM support with explicit syntax  
 ✅ **Label support** - Global and local labels with symbol resolution  
+✅ **Inline literals** - Embed strings and data directly in .text section  
 ✅ **Control flow** - `jmp`, `call` with relative addressing  
 ✅ **Two-pass linker** - Built-in symbol resolution and relocation  
 ✅ **Hex/Binary/Octal literals** - `0xDEADBEEF`, `0b1010`, `0o777`  
@@ -22,25 +23,28 @@ AmmAsm is a lightweight, handwritten x86-64 assembler designed for simplicity an
 
 ---
 
-## 🆕 What's New in v1.2
+## 🆕 What's New in v1.3
 
-### 🎯 Label Support & Linker
-- **Global labels** - `main:`, `_start:`, `my_func:`
-- **Local labels** - `.loop:`, `.end:` (scoped to previous global label)
-- **Two-pass linking** - Placeholder → symbol resolution → machine code patching
-- **MOV with labels** - `mov %rax, msg` loads label address into register
+### Major Features
+- **Inline Literals** - Embed data directly in code section
+  - `msg: u8 "Hello, World!", 0x0A, 0` - String literals
+  - `nums: u16 100, 200, 300` - Integer arrays
+- **Data Size Directives** - u8, u16, u32, u64
+- **Character Literals** - `mov %al, 'A'` single-char support
+- **Improved Parser** - Better error messages and syntax validation
 
-### 🔀 Control Flow Instructions
-- **JMP** - Unconditional jumps (`jmp label`, `jmp %rax`)
-- **CALL** - Function calls (`call func`, `call %rbx`)
-- **Relative addressing** - Automatic rel32 offset calculation for labels
-- **Absolute jumps** - Register indirect jumps (`jmp %rax`, `call %r15`)
-
-### 🔧 Backend Architecture
-- **parseInst()** - Code generator (MOV, ADD, JMP, CALL)
-- **collect_labels()** - First pass: gather all label addresses (PC tracking)
-- **resolve_labels()** - Second pass: patch relocations (RELOC_ABS64, RELOC_REL32)
-- **compiler()** - Orchestrates multi-pass compilation pipeline
+### 🐛 Bug Fixes (10+ Fixed)
+- ✅ Fixed incorrect byte copying in `compiler()` 
+- ✅ Fixed missing `machine_code_size` assignment in `parse_size_directives()`
+- ✅ Fixed memory leak in token cleanup
+- ✅ Fixed REX prefix generation for high-byte registers (spl, bpl, sil, dil)
+- ✅ Fixed SIB byte generation for RBP/R13 base registers
+- ✅ Fixed displacement size calculation for mod=00 addressing
+- ✅ Fixed label resolution in two-pass linker
+- ✅ Fixed PC tracking during code generation
+- ✅ Fixed MOV [mem], imm64 rejection (now properly errors)
+- ✅ Fixed ADD opcode selection for accumulator register
+- ✅ Fixed string escape sequence handling in lexer
 
 ---
 
@@ -51,12 +55,13 @@ AmmAsm is a lightweight, handwritten x86-64 assembler designed for simplicity an
 - Handles comments (`//`, `;`, `/* */`)
 - Supports multiple number bases (hex, binary, octal, decimal)
 - Label scoping (global `label:`, local `.label:`)
+- Character literals (`'A'`, `'\n'`, `'\0'`)
 
 ### 🌳 Parser (PARSE) - Builds Abstract Syntax Tree
 - Validates instruction operands
-- Resolves operand types (REG/IMM/MEM/LABEL)
+- Resolves operand types (REG/IMM/MEM/LABEL/CHAR)
 - Handles label scoping (global/local)
-- Creates AST nodes for instructions and labels
+- Creates AST nodes for instructions, labels, and data
 
 ### ⚙️ Code Generator (parseInst) - Emits x86-64 machine code
 - REX prefix generation for 64-bit operations
@@ -96,17 +101,23 @@ mov %rax, 0xff      ; Hexadecimal
 mov %rax, 0b1010    ; Binary
 mov %rax, 0o777     ; Octal
 mov %rax, -10       ; Negative numbers
+mov %al, 'A'        ; Character literal
 ```
 
-### Labels
+### Data Directives (NEW in v1.3!)
 ```asm
-; Global labels
-exit:
-    mov %rdi, 42
-    syscall
-_start:
-    mov %rax, 60
-    jmp exit
+; Byte arrays
+msg: u8 "Hello, World!", 0x0A, 0
+bytes: u8 0x01, 0x02, 0x03, 'A', 'B'
+
+; Word arrays (16-bit)
+words: u16 100, 200, 300, 0x1234
+
+; Double word arrays (32-bit)
+dwords: u32 0xDEADBEEF, 1000000, 0
+
+; Quad word arrays (64-bit)
+qwords: u64 0x123456789ABCDEF0, 999999999
 ```
 
 ### Memory Addressing
@@ -140,12 +151,33 @@ add %eax, 42        ; 32-bit
 add %ax, 42         ; 16-bit
 add %al, 42         ; 8-bit
 ```
+
 ---
+
+## 💡 Example Program (Hello World)
+
+```asm
+_start:
+    ; write(1, msg, len)
+    mov %rax, 1              ; sys_write
+    mov %rdi, 1              ; stdout
+    mov %rsi, msg:           ; buffer address
+    mov %rdx, 14             ; length
+    syscall
+
+    ; exit(0)
+    mov %rax, 60             ; sys_exit
+    mov %rdi, 0              ; status
+    syscall
+
+msg: u8 "Hello, World!", 0x0A
+```
 
 **Compile and run:**
 ```bash
-./aasm input.asm
-./a.bin # ELF64
+./aasm f=hello.asm o=hello
+chmod +x hello
+./hello
 ```
 
 ---
@@ -160,18 +192,21 @@ _start:
 skip:
     mov %rax, 60
     syscall
+
+msg: u8 "Hi", 0
 ```
 
-**Generated (hexdump a.bin):**
+**Generated (hexdump):**
 ```
 00001000:  e9 0a 00 00 00              ; jmp +10 (skip label)
 00001005:  48 bf 01 00 00 00 00 00 00 00  ; mov rdi, 1
 0000100f:  48 b8 3c 00 00 00 00 00 00 00  ; mov rax, 60
 00001019:  0f 05                       ; syscall
+0000101b:  48 69 00                    ; "Hi\0" (inline literal)
 ```
 
 **Linker work:**
-1. First pass: `skip` label at address `0x40100F`
+1. First pass: `skip` at `0x40100F`, `msg` at `0x40101B`
 2. Second pass: JMP offset = `0x40100F - (0x401000 + 5) = 0x0A`
 3. Patch: `E9 0A 00 00 00`
 
@@ -184,18 +219,38 @@ AmmAsm prioritizes:
 - **Zero dependencies** - Pure C99, no external libraries
 - **Educational value** - Readable code for learning x86-64 encoding
 - **Simplicity** - Minimal feature set, maximum understanding
+- **Hackability** - Clean codebase for experimentation
 
 ---
 
 ## ⚠️ Known Limitations
 
-- Limited instruction set (MOV, ADD, JMP, CALL in v1.2)
-- No conditional jumps yet (JE, JNE, JG, etc.) - coming in v1.3
+- Limited instruction set (MOV, ADD, JMP, CALL, SYSCALL)
+- No conditional jumps yet (JE, JNE, JG, etc.) - coming in v1.4
 - No multi-file linking
 - No macro system
 - No floating-point support (FPU)
-- No optimization passes (Never will be)
+- No optimization passes (and never will be)
+- No .data/.bss sections yet (everything in .text)
 
+---
+
+## 🛠️ Usage
+
+```bash
+# Basic compilation
+./aasm input.asm
+
+# Specify output file
+./aasm f=input.asm o=output
+
+# Alternative syntax
+./aasm input.asm o=myprogram
+```
+
+**Command-line options:**
+- `f=<file>` or `<file>` - Input assembly file
+- `o=<file>` - Output executable (default: `a.out`)
 
 ---
 
@@ -204,8 +259,22 @@ AmmAsm prioritizes:
 - [Intel® 64 and IA-32 Architectures Software Developer's Manual](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html)
 - [x86-64 Instruction Encoding](https://wiki.osdev.org/X86-64_Instruction_Encoding)
 - [ELF Format Specification](https://refspecs.linuxfoundation.org/elf/elf.pdf)
+- [System V ABI AMD64](https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf)
 
 ---
 
 
-**Made by a 14 y.o system programmer(me)**
+## 🏗️ Building from Source
+
+```bash
+gcc -O2 -Wall -Wextra -std=c99 Aasm.c -o aasm
+```
+
+**Requirements:**
+- GCC or Clang
+- Linux x86-64
+- C99 standard library
+
+---
+
+**Made by a 14 y.o system programmer (me)**

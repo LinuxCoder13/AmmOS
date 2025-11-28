@@ -55,7 +55,7 @@
 // #define T_GREG      0x07
 // #define T_PTRID     0x08
 #define T_ADDR_EXPR 0x09
-#define T_ID        0x0a
+// #define T_ID        0x0a
 #define T_STR       0x0b
 #define T_EOL       0x0c
 #define T_EOF       0x0d
@@ -83,8 +83,7 @@
 // #define ASTEOF   0x03
 
 #define MAX_TOKENS 1024
-#define MAX_LABEL  256
-                
+
 // .rodata            
 const char *CMDS[] = {"mov", "push", "pop", "syscall", "call", "jmp", "add", "sub", 
                "mul", "div", "je", "jne", "jg", "jl", "jge", "jle", "jz", "ja", "jb",
@@ -103,7 +102,7 @@ const char *HUMAN_TOKEN[] = {"inst", "label", "reg", "[reg]", "[reg +-*/ value]"
 /* name of label can include only this chars */
 const char *LET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_";
 
-const char *LETEXT = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_.";
+const char *LETEXT = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_";
 const char* DIG    = "0123456789";
 const char* DIGEXT = "0123456789abcdef";
 const char* DIGBIN = "01";
@@ -307,6 +306,7 @@ int is_inst(char* s){
 }
 
 void DEBUG_PRINT_TOKENS() {
+    #ifdef DEBUG
     printf("=== TOKENS DUMP (%d tokens) ===\n", toks_count);
     for (int i = 0; i < toks_count; i++) {
         const char* type_str = "UNKNOWN";
@@ -319,7 +319,6 @@ void DEBUG_PRINT_TOKENS() {
             case T_REG32: type_str = "T_REG32"; break;
             case T_REG64: type_str = "T_REG64"; break;
             case T_ADDR_EXPR: type_str = "T_ADDR_EXPR"; break;
-            case T_ID: type_str = "T_ID"; break;
             case T_STR: type_str = "T_STR"; break;
             case T_EOL: type_str = "T_EOL"; break;
             case T_EOF: type_str = "T_EOF"; break;
@@ -344,20 +343,8 @@ void DEBUG_PRINT_TOKENS() {
                i, type_str, toks[i].value ? toks[i].value : "(null)", toks[i].line);
     }
     printf("=== END TOKENS ===\n\n");
+    #endif
 }
-
-typedef struct {
-    uint8_t name[64];
-    uint64_t pc; // offset
-    uint64_t vpc; // pc + 0x400000
-    int resolved;
-    int defined;
-} Labels;
-
-Labels labels[MAX_TOKENS];
-short labels_count = 0;
-
-
 
 int is_reg(const char *s) __attribute__((__nonnull__(1)));
 int is_reg(const char *s){
@@ -409,12 +396,14 @@ int is_literal(const char* s) {
 
 char *read_string(char *buff, char *dest, int line) {
     while (*buff != '\0' && *buff != '"') {
-        if (*buff == '/') {
+        if (*buff == '\\') {
             switch (*(buff + 1)) {
                 case 'n': *dest++ = '\n'; buff += 2; continue;
                 case '"': *dest++ = '"'; buff += 2; continue;
                 case '/': *dest++ = '/'; buff += 2; continue;
                 case 't': *dest++ = '\t'; buff += 2; continue;
+                case 'b': *dest++ = '\b'; buff += 2; continue;
+                case '\\': *dest++ = '\\'; buff += 2; continue;
                 case '0': *dest = '\0'; buff += 2; return buff; // nah who does care about it any way 
                 default : fprintf(stderr, "AmmAsm: invalid escape sequence on line %d\n", line); exit(1);
             }
@@ -423,15 +412,6 @@ char *read_string(char *buff, char *dest, int line) {
         
     }
     return buff;
-}
-
-int strlchar(const char *s, int size, char c) {
-    const char *p = s + size; 
-    while (p-- != s) {        
-        if (*p == c) 
-            return p - s;     
-    }
-    return -1;
 }
 
 
@@ -502,6 +482,24 @@ int LEXER(FILE* fl) {
                 } else buff++;
                 continue;
             }
+            else if((*buff == 'u' || *buff == 'U') && isdigit(*(buff+1))){
+                char buffer[10] = {0};
+                int i=0;
+                while (*buff && !isspace(*buff) && i < (int)(sizeof(buffer)-1)){
+                    buffer[i++] = *buff++;
+                }
+
+                if(strcasecmp(buffer, HUMAN_AST[0]) == 0)      add_token(T_BYTE, buffer, line); 
+                else if(strcasecmp(buffer, HUMAN_AST[1]) == 0) add_token(T_BYTEPTR, buffer, line);
+                else if(strcasecmp(buffer, HUMAN_AST[2]) == 0) add_token(T_QWORD, buffer, line);
+                else if(strcasecmp(buffer, HUMAN_AST[3]) == 0) add_token(T_QWORDPTR, buffer, line);
+                else if(strcasecmp(buffer, HUMAN_AST[4]) == 0) add_token(T_DWORD, buffer, line);
+                else if(strcasecmp(buffer, HUMAN_AST[5]) == 0) add_token(T_DWORDPTR, buffer, line);
+                else if(strcasecmp(buffer, HUMAN_AST[6]) == 0) add_token(T_LBYTE, buffer, line);
+                else if(strcasecmp(buffer, HUMAN_AST[7]) == 0) add_token(T_LBYTEPTR, buffer, line);
+                else { fprintf(stderr, "AmmAsm: Can't define data size directives on line '%d'\n", line); exit(1); }
+                continue;             
+            }
             else if (isin(LETEXT, *buff)) { // global label
                 char buf[256] = {0};
                 int i = 0;
@@ -523,14 +521,8 @@ int LEXER(FILE* fl) {
                     add_token(T_INS, buf, line);
                     continue;
                 }
-                else if (*buff == '-' && *(buff+1) == '>') {
-                    buff += 2;
-                    add_token(T_ID, buf, line);
-                    continue;
-                }
-                else {
-                    
-                    fprintf(stderr, "AmmAsm: Can't define lab or id at line '%d'\n", line);
+                else {                  
+                    fprintf(stderr, "AmmAsm: Can't define global lab at line '%d'\n", line);
                     exit(1);
                 }
                 continue;
@@ -551,9 +543,10 @@ int LEXER(FILE* fl) {
                 if (*buff == ':') {
                     buff++;
                     add_token(T_LAB, full, line);
-                } else {
-                    if(is_inst(buf))add_token(T_INS, full, line);
-                    else add_token(T_ID, full, line); // undefined 
+                } 
+                else {
+                    fprintf(stderr, "AmmAsm: Can't define local lab at line '%d'\n", line);
+                    exit(1);
                 }
             }
             else if (*buff == '%') {
@@ -597,8 +590,7 @@ int LEXER(FILE* fl) {
                 char parsed_str[256] = {0};
                 
                 buff = read_string(buff, parsed_str, line);
-                printf("%s\n", buff);
-                if(!*buff == '"'){
+                if(*buff != '"'){
                     fprintf(stderr, "AmmAsm: unterminated string literal at line %d\n", line);
                     exit(1);                    
                 } 
@@ -626,7 +618,7 @@ int LEXER(FILE* fl) {
                     }
                     buff++;
                 }
-                else tmp = *buff;
+                else tmp = *buff++; 
 
                 if (*buff != '\'') {
                     fprintf(stderr, "AmmAsm: Unterminated character literal on line %d\n", line);
@@ -729,24 +721,7 @@ int LEXER(FILE* fl) {
                 add_token(T_COMMA, ",", line);
                 continue;
             }
-            else if((*buff == 'u' || *buff == 'U') && isdigit(*(buff+1))){
-ID_LEX:
-                char buffer[56] = {0};
-                int i=0;
-                while (isin(LET, *buff) && i < (int)(sizeof(buffer)-1)){
-                    buffer[i] = *buff++;
-                }
-                if(strcasecmp(buffer, HUMAN_AST[0]) == 0) add_token(T_BYTE, buffer, line);
-                else if(strcasecmp(buffer, HUMAN_AST[1]) == 0) add_token(T_BYTEPTR, buffer, line);
-                else if(strcasecmp(buffer, HUMAN_AST[2]) == 0) add_token(T_QWORD, buffer, line);
-                else if(strcasecmp(buffer, HUMAN_AST[3]) == 0) add_token(T_QWORDPTR, buffer, line);
-                else if(strcasecmp(buffer, HUMAN_AST[4]) == 0) add_token(T_DWORD, buffer, line);
-                else if(strcasecmp(buffer, HUMAN_AST[5]) == 0) add_token(T_DWORDPTR, buffer, line);
-                else if(strcasecmp(buffer, HUMAN_AST[6]) == 0) add_token(T_LBYTE, buffer, line);
-                else if(strcasecmp(buffer, HUMAN_AST[7]) == 0) add_token(T_LBYTEPTR, buffer, line);
-                else add_token(T_ID, buffer, line);
-                continue;             
-            }
+
             else if (strncasecmp(buff, "resb", 4) == 0){ add_token(T_RESB, buff, line); buff += 4; while (isspace(*buff)) buff++; continue;}
             else if (strncasecmp(buff, "resq", 4) == 0){ add_token(T_RESQ, buff, line); buff += 4; while (isspace(*buff)) buff++; continue;}
             else if (strncasecmp(buff, "resd", 4) == 0){ add_token(T_RESD, buff, line); buff += 4; while (isspace(*buff)) buff++; continue;}
@@ -785,7 +760,6 @@ typedef enum {
     AST_SECTION,
     AST_COMMA,
     AST_ADDR_EXPR,
-    AST_ID,
     AST_CHAR,
     AST_UNKNOWN
 } ASTType;
@@ -806,7 +780,6 @@ typedef enum {
 // will be added more in future version
 typedef enum {
     SEC_DATA,
-    // SEC_BSS,
     SEC_TEXT
 } SECtype;
 
@@ -818,11 +791,11 @@ typedef struct AST {
         struct { uint8_t operands[4][35]; OperandType otype[4]; int oper_count; int resolved; } ins; // resolved -> for linking symbols
         struct { uint8_t data[256]; int size; } u8;
         struct { uint8_t *data[256]; int size; } u8ptr;
-        struct { uint8_t data[256]; int size; } u16;
+        struct { uint16_t data[256]; int size; } u16;
         struct { uint8_t *data[256]; int size; } u16ptr;
-        struct { uint8_t data[256]; int size; } u32;
+        struct { uint32_t data[256]; int size; } u32;
         struct { uint8_t *data[256]; int size; } u32ptr;
-        struct { uint8_t data[256]; int size; } u64;
+        struct { uint64_t data[256]; int size; } u64;
         struct { uint8_t *data[256]; int size; } u64ptr;
         struct { uint64_t size; } resb;
         struct { uint64_t size; } resq;
@@ -843,6 +816,7 @@ int ast_count = 0;
 
 // this debuger was wroten by Deepseek
 void DEBUG_PRINT_AST() {
+    #ifdef DEBUG
     printf("=== AST DUMP (%d nodes) ===\n", ast_count);
     for (int i = 0; i < ast_count; i++) {
         AST* node = &ast[i];
@@ -863,7 +837,6 @@ void DEBUG_PRINT_AST() {
             case AST_RESD: type_str = "AST_RESD"; break;
             case AST_RESL: type_str = "AST_RESL"; break;
             case AST_LABEL: type_str = "AST_LABEL"; break;
-            case AST_ID: type_str = "AST_ID"; break;
             case AST_SECTION: type_str = "AST_SECTION"; break;
             case AST_ADDR_EXPR: type_str = "AST_ADDR_EXPR"; break;
             case AST_CHAR: type_str = "AST_CHAR"; break;
@@ -894,10 +867,6 @@ void DEBUG_PRINT_AST() {
                 
             case AST_LABEL:
                 printf(" name='%s' addr=0x%lx  vaddr=0x%lx", node->label.name, node->label.adress, node->label.vadress);
-                break;
-            
-            case AST_ID:
-                printf(" name='%s' addr=0x%lx", node->id.name, node->id.adress);
                 break;
 
             case AST_CHAR:
@@ -973,6 +942,7 @@ void DEBUG_PRINT_AST() {
         printf("\n");
     }
     printf("=== END AST ===\n\n");
+    #endif
 }
 
 /* post-link resolve O(n^2) */
@@ -1048,8 +1018,7 @@ void resolve_labels() {
             }
             
             if (!found) {
-                fprintf(stderr, "AmmAsm: Undefined label '%s' in %s\n", 
-                        label_name, node->cmd);
+                fprintf(stderr, "AmmAsm: Undefined label '%s'\n", label_name);
                 exit(1);
             }
             
@@ -1129,12 +1098,6 @@ AST* PARSE(){
                     node.ins.otype[node.ins.oper_count++] = O_IMM;
                     continue;
                 }
-                else if(toks[pos].type == T_ID){
-                    strncpy(node.ins.operands[node.ins.oper_count], toks[pos].value, sizeof node.id.name);
-                    pos++;
-                    node.ins.otype[node.ins.oper_count++] = O_ID;
-                    continue;
-                }
                 else if(toks[pos].type == T_CHAR){
                     node.ins.operands[node.ins.oper_count][0] = toks[pos].value[0]; // okay?
                     node.ins.operands[node.ins.oper_count][1] = '\0'; // okay?
@@ -1154,27 +1117,18 @@ AST* PARSE(){
             if (pos < toks_count && toks[pos].type == T_EOL) ++pos;
             continue;
         }
-        if(tok->type == T_ID){
-            node.type = AST_ID;
-            if(tok->type != T_EOF && tok->type != T_EOL){
-                strncpy(node.id.name, toks[pos++].value, sizeof(node.id.name));
-            }
-            ast[ast_count++] = node;
-            ++pos;
-            continue;            
-        }
         if(tok->type == T_LAB){
             node.type = AST_LABEL;
             if(tok->type != T_EOF && tok->type != T_EOL){
                 strncpy(node.label.name, toks[pos++].value, sizeof(node.label.name));
             }
             ast[ast_count++] = node;
-            ++pos;
             continue;
         }
-        if(tok->type == T_BYTE && (pos == 0 || toks[pos-1].type == T_ID)){   
+        if(tok->type == T_BYTE && (pos == 0 || toks[pos-1].type == T_LAB)){  
             node.type = AST_U8;
             node.u8.size = 0;
+            pos++;
             while(pos < toks_count){  
                 if (toks[pos].type == T_EOL || toks[pos].type == T_EOF) break;
                 if(toks[pos].type == T_COMMA){ pos++; continue;} // skip this shit
@@ -1206,7 +1160,7 @@ AST* PARSE(){
             if (pos < toks_count && toks[pos].type == T_EOL) ++pos;
             continue;
         }
-        else if (tok->type == T_BYTEPTR && (pos == 0 || toks[pos-1].type == T_ID)) {
+        else if (tok->type == T_BYTEPTR && (pos == 0 || toks[pos-1].type == T_LAB)) {
             node.type = AST_U8PTR;
             node.u8ptr.size = 0;
             pos++;
@@ -1215,7 +1169,7 @@ AST* PARSE(){
                 if (toks[pos].type == T_EOL || toks[pos].type == T_EOF) break;
                 
                 if (toks[pos].type == T_COMMA) { pos++; continue; }
-                if (toks[pos].type == T_ID) {
+                if (toks[pos].type == T_LAB) {
                     if (node.u8ptr.size >= 256) {
                         fprintf(stderr, "AmmAsm: too many u8ptr (max. 256)\n");
                         exit(1);
@@ -1232,7 +1186,7 @@ AST* PARSE(){
                     pos++;
                 }
                 else {
-                    fprintf(stderr, "AmmAsm: expected label name (T_ID\\T_LAB) or 0 (NULL) in U8PTR at line %d\n", toks[pos].line);
+                    fprintf(stderr, "AmmAsm: expected label name LAB or 0 (NULL) in U8PTR at line %d\n", toks[pos].line);
                     exit(1);
                 }
             }
@@ -1242,9 +1196,10 @@ AST* PARSE(){
             if(pos < toks_count && toks[pos].type == T_EOL) ++pos;
             continue;
         }
-        else if(tok->type == T_QWORD && (pos == 0 || toks[pos-1].type == T_ID)){
+        else if(tok->type == T_QWORD && (pos == 0 || toks[pos-1].type == T_LAB)){
             node.type = AST_U16;
             node.u16.size = 0;
+            pos++;
             while(pos < toks_count){
                 if (toks[pos].type == T_EOL || toks[pos].type == T_EOF) break;
                 if(toks[pos].type == T_COMMA){ pos++; continue;} 
@@ -1264,7 +1219,7 @@ AST* PARSE(){
             if(pos < toks_count && toks[pos].type == T_EOL) ++pos;
             continue;
         }
-        else if(tok->type == T_QWORDPTR && (pos == 0 || toks[pos-1].type == T_ID)){
+        else if(tok->type == T_QWORDPTR && (pos == 0 || toks[pos-1].type == T_LAB)){
             node.type = AST_U16PTR;
             node.u16ptr.size = 0;
             ++pos; // skip cmd
@@ -1274,7 +1229,7 @@ AST* PARSE(){
                 if(toks[pos].type == T_COMMA){ ++pos; continue; }
                 if(node.u16ptr.size >= 256){ fprintf(stderr, "AmmAsm: Too many u16ptr at line \"%d\"", toks[pos].line); exit(1);}
 
-                if(toks[pos].type == T_ID){
+                if(toks[pos].type == T_LAB){
                     node.u16ptr.data[node.u16ptr.size++] = toks[pos].value;
                     ++pos;
                 }
@@ -1283,7 +1238,7 @@ AST* PARSE(){
                     pos++;
                 }
                 else {
-                    fprintf(stderr, "AmmAsm: expected label name (T_ID) or 0 (NULL) in u16ptr at line %d\n", toks[pos].line);
+                    fprintf(stderr, "AmmAsm: expected label name or 0 (NULL) in u16ptr at line %d\n", toks[pos].line);
                     exit(1);
                 }
             }
@@ -1291,7 +1246,7 @@ AST* PARSE(){
             if(pos < toks_count && toks[pos].type == T_EOL) ++pos;
             continue;            
         }
-        else if (tok->type == T_DWORD && (pos == 0 || toks[pos-1].type == T_ID)) {
+        else if (tok->type == T_DWORD && (pos == 0 || toks[pos-1].type == T_LAB)) {
             node.type = AST_U32;
             node.u32.size = 0;
             pos++; 
@@ -1312,7 +1267,7 @@ AST* PARSE(){
             ast[ast_count++] = node;
             if (pos < toks_count && toks[pos].type == T_EOL) pos++;
         }
-        else if(tok->type == T_DWORDPTR && (pos == 0 || toks[pos-1].type == T_ID)){
+        else if(tok->type == T_DWORDPTR && (pos == 0 || toks[pos-1].type == T_LAB)){
             node.type = AST_U32PTR;
             node.u32ptr.size = 0;
             ++pos; // skip cmd
@@ -1322,7 +1277,7 @@ AST* PARSE(){
                 if(toks[pos].type == T_COMMA){ ++pos; continue; }
                 if(node.u32ptr.size >= 256){ fprintf(stderr, "AmmAsm: Too many u32ptr at line \"%d\"", toks[pos].line); exit(1);}
 
-                if(toks[pos].type == T_ID){
+                if(toks[pos].type == T_LAB){
                     node.u32ptr.data[node.u32ptr.size++] = toks[pos].value;
                     ++pos;
                 }
@@ -1331,7 +1286,7 @@ AST* PARSE(){
                     pos++;
                 }
                 else {
-                    fprintf(stderr, "AmmAsm: expected label name (T_ID) or 0 (NULL) in u32ptr at line %d\n", toks[pos].line);
+                    fprintf(stderr, "AmmAsm: expected label name or 0 (NULL) in u32ptr at line %d\n", toks[pos].line);
                     exit(1);
                 }
             }
@@ -1339,7 +1294,7 @@ AST* PARSE(){
             if(pos < toks_count && toks[pos].type == T_EOL) ++pos;
             continue;            
         }
-        else if (tok->type == T_LBYTE && (pos == 0 || toks[pos-1].type == T_ID)) {
+        else if (tok->type == T_LBYTE && (pos == 0 || toks[pos-1].type == T_LAB)) {
             node.type = AST_U64;
             node.u64.size = 0;
             pos++; 
@@ -1360,7 +1315,7 @@ AST* PARSE(){
             ast[ast_count++] = node;
             if (pos < toks_count && toks[pos].type == T_EOL) pos++;
         }
-        else if(tok->type == T_LBYTEPTR && (pos == 0 || toks[pos-1].type == T_ID)){
+        else if(tok->type == T_LBYTEPTR && (pos == 0 || toks[pos-1].type == T_LAB)){
             node.type = AST_U64PTR;
             node.u64ptr.size = 0;
             ++pos; // skip cmd
@@ -1370,7 +1325,7 @@ AST* PARSE(){
                 if(toks[pos].type == T_COMMA){ ++pos; continue; }
                 if(node.u64ptr.size >= 256){ fprintf(stderr, "AmmAsm: Too many u64ptr at line \"%d\"", toks[pos].line); exit(1);}
 
-                if(toks[pos].type == T_ID){
+                if(toks[pos].type == T_LAB){
                     node.u64ptr.data[node.u64ptr.size++] = toks[pos].value;
                     ++pos;
                 }
@@ -1379,7 +1334,7 @@ AST* PARSE(){
                     pos++;
                 }
                 else {
-                    fprintf(stderr, "AmmAsm: expected label name (T_ID) or 0 (NULL) in u64ptr at line %d\n", toks[pos].line);
+                    fprintf(stderr, "AmmAsm: expected label name or 0 (NULL) in u64ptr at line %d\n", toks[pos].line);
                     exit(1);
                 }
             }
@@ -1390,7 +1345,7 @@ AST* PARSE(){
         // bss
         else if(tok->type == T_RESB || tok->type == T_RESQ || tok->type == T_RESD || tok->type == T_RESL){
             Token *pp = tok;
-            if(toks[(pos-1)].type != T_ID || toks[(pos+1)].type != T_INT){ 
+            if(toks[(pos-1)].type != T_LAB || toks[(pos+1)].type != T_INT){ 
                 fprintf(stderr, "AmmAsm: syntax erorr. expected identifier before \"%s\" and decimal number after\n", 
                     (pp->type == T_RESB) ? "resb" : 
                     (pp->type == T_RESQ) ? "resq" : 
@@ -1412,6 +1367,20 @@ AST* PARSE(){
             if(pos < toks_count && toks[pos].type == T_EOL) ++pos;
             continue;              
         }
+        else if (tok->type == T_SEC){
+            node.type = AST_SECTION;
+            strncpy(node.section.name, toks[pos++].value, sizeof node.section.name);
+            ast[ast_count++] = node;
+            if(pos < toks_count && toks[pos].type == T_EOL) ++pos;
+        }
+// !section data
+//  msg: u8 "hello world!", 0
+//  msg2: u16 0x1000, 30
+// !section
+//
+//
+//
+//
         if (pos < toks_count && toks[pos].type != T_EOF) {
             pos++;
         }
@@ -1574,8 +1543,6 @@ Output:
 #define SKIP_SP while(isspace(*p)) p++;
 
 typedef struct {
-// mov [rbx + rcx * 8 + 0x10], rax 
-
     // base reg conf
     int base_is_reg;
     long base_val;
@@ -2951,8 +2918,16 @@ void parseInst(AST* node) {
             uint8_t imm8 = (uint8_t)atoi(node->ins.operands[1]);
             int pos = 0;
             uint8_t rm = 0;
-            uint8_t c = 0;
-
+            
+            // unsupported high-byte registers (ah, bh, ch, dh)
+            const char* high_regs[] = {"ah", "bh", "ch", "dh", NULL};
+            for(int i = 0; high_regs[i] != NULL; i++) {
+                if(strcmp(node->ins.operands[0], high_regs[i]) == 0) {
+                    fprintf(stderr, "AmmAsm: high-byte registers (ah/bh/ch/dh) are not supported in 64-bit mode\n");
+                    exit(1); 
+                }
+            }
+            
             int idx = find_reg8_index(node->ins.operands[0]);
             
             // Special case
@@ -2963,15 +2938,21 @@ void parseInst(AST* node) {
                 pc += 2;
                 return;
             }
-
-            if(idx != -1) { rm = idx; if(rm >= 8) rex = REX_BASE | REX_B; }
+            
+            if(idx != -1) {
+                rm = idx;
+                // spl, bpl, sil, dil 
+                if(rm >= 4 && rm <= 7) rex = 0x40; 
+                else if(rm >= 8) rex = REX_BASE | REX_B;
+            }
+            
             modrm = (0b11 << 6) | (0 << 3) | (rm & 7);
-
-            if(rex)node->machine_code[pos++] = rex;
+            
+            if(rex) node->machine_code[pos++] = rex;
             node->machine_code[pos++] = opcode;
             node->machine_code[pos++] = modrm;
             node->machine_code[pos++] = imm8;
-
+            
             *s = pos; 
             pc += pos;
         }
@@ -3013,11 +2994,10 @@ void parseInst(AST* node) {
             if(reg_idx >= 8) rex |= REX_B;
             
             // ModR/M: mod=11 (register), reg=extension, rm=register
-            if(!strcasecmp(node->cmd, "jmp")) {
-                modrm = 0xE0 | (reg_idx & 7); // /4 = 100 in reg field
-            } 
-            else {
-                modrm = 0xD0 | (reg_idx & 7); // /2 = 010 in reg field
+            if(!strcasecmp(node->cmd, "jmp")) { // jmp
+                modrm = (0b11 << 6) | (0b100 << 3) | (reg_idx & 7);  // FF /4
+            } else { // call
+                modrm = (0b11 << 6) | (0b010 << 3) | (reg_idx & 7);  // FF /2
             }
             
             node->machine_code[0] = rex;
@@ -3029,7 +3009,64 @@ void parseInst(AST* node) {
             return;
         }
     }
+    
+    // ABI SYSTEM-V
+    else if(!strcasecmp(node->cmd, "syscall")){
+        node->machine_code[0] = 0x0F;
+        node->machine_code[1] = 0x05;
+        *s = 2;
+        pc += 2;
+        return;
+    }
+
 }
+
+void parse_size_directives(AST* node) {
+    int type = node->type;
+    uint8_t *mc = (uint8_t*)node->machine_code;
+
+    switch(type) {
+        case AST_U8:
+            memcpy(mc, node->u8.data, node->u8.size);
+            node->machine_code_size = node->u8.size; 
+            pc += node->u8.size;
+            break;
+
+        case AST_U16: {
+            int offset = 0;
+            for(int i = 0; i < node->u16.size; ++i){
+                As16(node->u16.data[i], &mc[offset]);
+                offset += sizeof(uint16_t);
+            }
+            node->machine_code_size = offset; 
+            pc += offset;
+            break;
+        }
+
+        case AST_U32: {
+            int offset = 0;
+            for(int i = 0; i < node->u32.size; ++i){
+                As32(node->u32.data[i], &mc[offset]);
+                offset += sizeof(uint32_t);
+            }
+            node->machine_code_size = offset;
+            pc += offset;
+            break;
+        }
+
+        case AST_U64: {
+            int offset = 0;
+            for(int i = 0; i < node->u64.size; ++i){
+                As64(node->u64.data[i], &mc[offset]);
+                offset += sizeof(uint64_t);
+            }
+            node->machine_code_size = offset; 
+            pc += offset;
+            break;
+        }
+    }
+}
+
 
 
 void ELFgenfile(FILE *fl, uint64_t e_entry, uint8_t *text_code, uint64_t text_size) {
@@ -3055,7 +3092,6 @@ void ELFgenfile(FILE *fl, uint64_t e_entry, uint8_t *text_code, uint64_t text_si
 
     memcpy(&elf_header[0x18], &e_entry, 8);
     fwrite(elf_header, 1, 64, fl);
-    pc += 64;
 
     //  Program Header (.text RX) 
     uint8_t phdr[56] = {
@@ -3076,14 +3112,19 @@ void ELFgenfile(FILE *fl, uint64_t e_entry, uint8_t *text_code, uint64_t text_si
     memcpy(&phdr[40], &text_size,   8);
 
     fwrite(phdr, 1, 56, fl);
-    pc += 56;
 
     // Padding till 0x1000
     uint64_t padding_size = 0x1000 - (64 + 56);
     uint8_t *padding = calloc(1, padding_size);
     fwrite(padding, 1, padding_size, fl);
     free(padding);
-    pc += padding_size;
+
+    // 3976 - padding till .text
+    // 64   - elf header
+    // 56   - 1. prog header (.text)
+    short elf_cap = 3976 + 64 + 56;
+
+    pc += elf_cap;
 
     //.text section 
     fwrite(text_code, 1, text_size, fl);
@@ -3093,61 +3134,94 @@ void compiler(uint8_t *text, int *textsize) {
     if (!text) return;
     int pos = 0;
 
-    for(int i = 0; i < ast_count; i++)
-        parseInst(&ast[i]);
+    for(int i = 0; i < ast_count; i++){
+        if(ast[i].type == AST_INS) {
+            parseInst(&ast[i]);
+        }
+        else if(ast[i].type == AST_U8 || ast[i].type == AST_U16 || 
+                ast[i].type == AST_U32 || ast[i].type == AST_U64) {
+            parse_size_directives(&ast[i]);
+        }
+    }
 
     collect_labels();
     resolve_labels();
 
     for (int i = 0; i < ast_count; ++i) {
-        for(int j = 0; j < ast[i].machine_code_size; ++j)
-            text[pos++] = ast[i].machine_code[j];
+        if(ast[i].type == AST_INS && ast[i].machine_code_size > 0){
+            memcpy(&text[pos], ast[i].machine_code, ast[i].machine_code_size);
+            pos += ast[i].machine_code_size;
+        }
+        // U8 
+        else if(ast[i].type == AST_U8 && ast[i].machine_code_size > 0){
+            memcpy(&text[pos], ast[i].machine_code, ast[i].machine_code_size);
+            pos += ast[i].machine_code_size;
+        }
+        // U16
+        else if(ast[i].type == AST_U16 && ast[i].machine_code_size > 0){
+            memcpy(&text[pos], ast[i].machine_code, ast[i].machine_code_size);
+            pos += ast[i].machine_code_size;
+        }
+        // U32
+        else if(ast[i].type == AST_U32 && ast[i].machine_code_size > 0){
+            memcpy(&text[pos], ast[i].machine_code, ast[i].machine_code_size);
+            pos += ast[i].machine_code_size;
+        }
+        // U64
+        else if(ast[i].type == AST_U64 && ast[i].machine_code_size > 0){
+            memcpy(&text[pos], ast[i].machine_code, ast[i].machine_code_size);
+            pos += ast[i].machine_code_size;
+        }
     }
-
-    // this will be removed in next version (1.3)
-    text[pos++] = 0x0f;  // syscall
-    text[pos++] = 0x05;
-    pc += 2;
 
     *textsize = pos;
 }
 
-
-int main(int argc, char **argv){
-    if(argc < 2){
-        printf("AmmAsm v1.2: \033[5;41mFatal: No file given\033[0m\n");
-        return 1;
-    }
-    // .bss
-    static uint8_t text[1024 * 256] ; // to biiiig for stack
+void handl_pipeline(int argc, char **argv){ // second main() in 1 pthread (for keeping code clean)
+    static uint8_t text[1024 * 64];
     int textsize = 0;
-    FILE *input = fopen(argv[1], "r");
 
-    line = LEXER(input);
+    FILE *input = fopen(argv[0], "r");
+    LEXER(input);
+    DEBUG_PRINT_TOKENS();
+
     fclose(input);
-
-    #ifdef DEBUG
-        DEBUG_PRINT_TOKENS();
-    #endif
     
     PARSE();
     
-    #ifdef DEBUG
-        DEBUG_PRINT_AST();
-    #endif
+    FILE *output = fopen(argv[1], "wb");
 
-    FILE *output = fopen("a.bin", "wb");
-    if (!output) {
-        fprintf(stderr, "AmmAsm: Failed to create a.bin\n");
+    compiler(text, &textsize);
+    ELFgenfile(output, 0x401000, text, textsize);
+    DEBUG_PRINT_AST();
+
+    fclose(output);
+    printf("AmmAsm: Compiled successfully! Output: %s (%d bytes)\n", argv[1], pc );
+    exit(0);
+}
+
+int main(int argc, char **argv){
+    if (argc < 2) {
+        printf("AmmAsm v1.3: \033[5;41mFatal: No file given\033[0m\n");
         return 1;
     }
 
-    // 1v1 me on sword coward?
-    compiler(text, &textsize);
-    ELFgenfile(output, 0x401000, text, textsize);
+    const char* input = NULL;
+    const char* out = "a.out";
 
-    fclose(output);
-    
-    printf("AmmAsm: Compiled successfully! Output: a.bin (%d bytes)\n", pc);
+    for (int i = 1; i < argc; ++i){
+        if (!strncmp(argv[i], "f=", 2)){ input = argv[i] + 2; continue; }
+        if (!strncmp(argv[i], "o=", 2)){ out = argv[i] + 2; continue; }
+        if (argv[i][0] != '-') input = argv[i];
+    }
+
+    if (!input) {
+        printf("AmmAsm v1.2: \033[5;41mFatal: No input file given\033[0m\n");
+        return 1;
+    }
+
+    char* fake_argv[] = { (char*)input, (char*)out };
+    handl_pipeline(2, fake_argv);
+
     return 0;
 }
