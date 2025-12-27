@@ -77,10 +77,13 @@
 #define T_RESD      0x1b
 #define T_RESL      0x1c
 
-// #define ASTINS   0x00
-// #define ASTBYTES 0x01
-// #define ASTRES   0x02
-// #define ASTEOF   0x03
+#define T_PLUS      0x1d
+#define T_MINUS     0x1e
+#define T_STAR      0x1f
+#define T_SLASH     0x20
+
+#define T_PC        0x21
+
 
 #define MAX_TOKENS 1024
 
@@ -104,7 +107,7 @@ const char *LET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_";
 
 const char *LETEXT = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_";
 const char* DIG    = "0123456789";
-const char* DIGEXT = "0123456789abcdef";
+const char* DIGEXT = "0123456789abcdefABCDEF";
 const char* DIGBIN = "01";
 const char* DIGOCT = "01234567";
 
@@ -199,43 +202,66 @@ int is2arrin(const char *str[], char *str2){
             return 1; 
     return 0;
 }
-
-long parse_expr(); // for gcc to escape conflicting types
+long parse_expr(); // forward
 
 long parse_number() {
     while (isspace(*p)) p++;
-    
+
     if (*p == '-') {
         p++;
         return -parse_number();
     }
 
     if (*p == '(') {
-        p++; // skip (
+        p++;
         long val = parse_expr();
-        if (*p == ')') p++; // skip )
+        if (*p == ')') p++;
         return val;
     }
 
-    int res = 0;
-    if(*p == '0'){
-        char *end;
-        if(*(p+1) == 'x' || *(p+1) == 'X'){ 
-            res = strtol(p, &end, 16);
-            p = end;
-            return res;
+    long res = 0;
+
+    if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+        p += 2;
+        while (isxdigit(*p)) {
+            if (*p >= '0' && *p <= '9') res = res * 16 + (*p - '0');
+            else if (*p >= 'a' && *p <= 'f') res = res * 16 + (*p - 'a' + 10);
+            else if (*p >= 'A' && *p <= 'F') res = res * 16 + (*p - 'A' + 10);
+            p++;
         }
-        else return 0;
+        return res;
     }
-    while (isdigit(*p)) {
-        res = res * 10 + (*p - '0');
-        p++;
+
+    if (p[0] == '0' && (p[1] == 'b' || p[1] == 'B')) {
+        p += 2;
+        while (*p == '0' || *p == '1') {
+            res = res * 2 + (*p - '0');
+            p++;
+        }
+        return res;
     }
-    return res;
+
+    if (p[0] == '0' && (p[1] == 'o' || p[1] == 'O')) {
+        p += 2;
+        while (*p >= '0' && *p <= '7') {
+            res = res * 8 + (*p - '0');
+            p++;
+        }
+        return res;
+    }
+
+    if (isdigit(*p)) {
+        while (isdigit(*p)) {
+            res = res * 10 + (*p - '0');
+            p++;
+        }
+        return res;
+    }
+
+    // fallback
+    return 0;
 }
 
-
-// level: *, /
 long parse_term() {
     long left = parse_number();
     while (1) {
@@ -246,14 +272,11 @@ long parse_term() {
         } else if (*p == '/') {
             p++;
             left /= parse_number();
-        } else {
-            break;
-        }
+        } else break;
     }
     return left;
 }
 
-// level: +, -
 long parse_expr() {
     long left = parse_term();
     while (1) {
@@ -264,9 +287,7 @@ long parse_expr() {
         } else if (*p == '-') {
             p++;
             left -= parse_term();
-        } else {
-            break;
-        }
+        } else break;
     }
     return left;
 }
@@ -275,6 +296,7 @@ long eval_expr(const char *str) {
     p = str;
     return parse_expr();
 }
+
 
 void add_token(int type, char* value, int line){
     if(toks_count >= MAX_TOKENS){
@@ -521,7 +543,8 @@ int LEXER(FILE* fl) {
                     add_token(T_INS, buf, line);
                     continue;
                 }
-                else {                  
+                else {     
+                    DEBUG_PRINT_TOKENS();             
                     fprintf(stderr, "AmmAsm: Can't define global lab at line '%d'\n", line);
                     exit(1);
                 }
@@ -543,6 +566,7 @@ int LEXER(FILE* fl) {
                 if (*buff == ':') {
                     buff++;
                     add_token(T_LAB, full, line);
+                    continue;
                 } 
                 else {
                     fprintf(stderr, "AmmAsm: Can't define local lab at line '%d'\n", line);
@@ -565,20 +589,30 @@ int LEXER(FILE* fl) {
 
                 continue;
             }
-            else if (*buff == '-' || *buff == '+' || (isdigit(*buff) && *buff != '0')) {
+            else if (isdigit(*buff) || *buff == '-') { 
                 char expr_buf[128] = {0};
                 int i = 0;
 
-                while (*buff && (isdigit(*buff) || *buff == '+' || *buff == '-' || *buff == '*' || *buff == '/' || isspace(*buff))) {
+                while (*buff && (
+                    isdigit(*buff) || 
+                    isxdigit(*buff) ||
+                    *buff == '+' || *buff == '-' || 
+                    *buff == '*' || *buff == '/' || 
+                    *buff == 'x' || *buff == 'X' || 
+                    *buff == 'o' || *buff == 'O' ||  
+                    *buff == 'b' || *buff == 'B' ||  
+                    isspace(*buff)
+                )){
                     if (i < (int)(sizeof(expr_buf) - 1)) {
                         expr_buf[i++] = *buff;
                     }
                     buff++;
                 }
+                
                 expr_buf[i] = '\0';
-
+                
                 long long value = (long)eval_expr(expr_buf);
-
+                
                 char val_str[32];
                 snprintf(val_str, sizeof(val_str), "%lld", value);
                 add_token(T_INT, val_str, line);
@@ -631,45 +665,7 @@ int LEXER(FILE* fl) {
                 add_token(T_CHAR, tmp2, line);
                 continue;
             }
-            else if(*buff == '0'){
-                char tmp[72];
-                long long c = 0;
-                buff++; 
-                
-                if(*buff == 'x' || *buff == 'X'){ // hex
-                    buff++;
-                    while (isin(DIGEXT, *buff)) {
-                        if (*buff >= '0' && *buff <= '9') 
-                            c = c * 16 + (*buff - '0');
-                        else if (*buff >= 'a' && *buff <= 'f') 
-                            c = c * 16 + (*buff - 'a' + 10);
-                        else if (*buff >= 'A' && *buff <= 'F') 
-                            c = c * 16 + (*buff - 'A' + 10);
-                        else break;
-                        buff++; 
-                    }
-                    snprintf(tmp, sizeof(tmp), "%lld", c); 
-                    add_token(T_INT, tmp, line);
-                }
-                else if(*buff == 'b'){ // binary
-                    buff++; 
-                    while(isin(DIGBIN, *buff))
-                        c = c * 2 + (*buff++ - '0');
-                    snprintf(tmp, sizeof(tmp), "%lld", c);
-                    add_token(T_INT, tmp, line);
-                }
-                else if (*buff == 'o') { // octal
-                    buff++; 
-                    while (isin(DIGOCT, *buff)) 
-                        c = c * 8 + (*buff++ - '0');
-                    snprintf(tmp, sizeof(tmp), "%lld", c);
-                    add_token(T_INT, tmp, line);
-                }
-                else {
-                    add_token(T_INT, "0", line);
-                }
-                continue;
-            }
+
             else if (*buff == '[') {
                 buff++; 
 
@@ -728,7 +724,7 @@ int LEXER(FILE* fl) {
             else if (strncasecmp(buff, "resl", 4) == 0){ add_token(T_RESL, buff, line); buff += 4; while (isspace(*buff)) buff++; continue;}
                 
             else{ 
-                fprintf(stderr, "AmmAsm: unvalid syntax or char on line\n", line); 
+                fprintf(stderr, "AmmAsm: unvalid syntax or char on line '%d'\n", line); 
                 exit(1); 
             }
             buff++;
@@ -740,8 +736,8 @@ int LEXER(FILE* fl) {
     return line;
 }
 
-
 typedef enum {
+    AST_INT,
     AST_INS,    
     AST_U8,
     AST_U8PTR,
@@ -840,6 +836,7 @@ void DEBUG_PRINT_AST() {
             case AST_SECTION: type_str = "AST_SECTION"; break;
             case AST_ADDR_EXPR: type_str = "AST_ADDR_EXPR"; break;
             case AST_CHAR: type_str = "AST_CHAR"; break;
+            case AST_INT: type_str = "AST_INT"; break;
         }
         
         printf("AST[%d]: type=%-15s", i, type_str);
@@ -947,23 +944,39 @@ void DEBUG_PRINT_AST() {
 
 /* post-link resolve O(n^2) */
 
-void collect_labels() {
-    uint64_t current_pc = 0x401000; // .text section starts here btw
-    
+uint64_t collect_labels() {
+    uint64_t current_pc = 0x401000; // .text section starts here btw (by default)
+    uint8_t e_entry_defined = 0;
+    uint64_t e_entry = 0x401000; // by default
+
     for (int i = 0; i < ast_count; i++) {
         if (ast[i].type == AST_LABEL) {
-            ast[i].label.adress = current_pc; // i might got screwed
+            ast[i].label.adress = current_pc; 
             ast[i].label.vadress = current_pc;
             ast[i].label.defined = 1;
             
             #ifdef DEBUG
             printf("Label '%s' at 0x%lx\n", ast[i].label.name, current_pc);
             #endif
+
+            if(!strcmp(ast[i].label.name, "_start")){
+                e_entry_defined = 1;
+                e_entry = current_pc;
+            }
         }
-        else if (ast[i].type == AST_INS && ast[i].machine_code_size > 0) {
-            current_pc += ast[i].machine_code_size;
-        }
+        else if ((ast[i].type == AST_INS && ast[i].machine_code_size > 0) ||
+                 (ast[i].type == AST_U8  && ast[i].machine_code_size > 0) ||
+                 (ast[i].type == AST_U16 && ast[i].machine_code_size > 0) ||
+                 (ast[i].type == AST_U32 && ast[i].machine_code_size > 0) ||
+                 (ast[i].type == AST_U64 && ast[i].machine_code_size > 0))
+            current_pc += ast[i].machine_code_size; // clean code?
     }
+    
+    if(!e_entry_defined){
+        printf("AmmAsm: \033[1;Linker:\033[0m Entry point '_start' not found. Using 0x401000 as default\n");
+    }
+
+    return e_entry;
 }
 
 // Ammlinker
@@ -1024,7 +1037,11 @@ void resolve_labels() {
             
             uint64_t current_pc = 0x401000;
             for (int k = 0; k < i; k++) {
-                if (ast[k].type == AST_INS && ast[k].machine_code_size > 0) {
+                if ((ast[k].type == AST_INS && ast[k].machine_code_size > 0) ||
+                    (ast[k].type == AST_U8  && ast[k].machine_code_size > 0) ||
+                    (ast[k].type == AST_U16 && ast[k].machine_code_size > 0) ||
+                    (ast[k].type == AST_U32 && ast[k].machine_code_size > 0) ||
+                    (ast[k].type == AST_U64 && ast[k].machine_code_size > 0)) {
                     current_pc += ast[k].machine_code_size;
                 }
             }
@@ -1373,14 +1390,7 @@ AST* PARSE(){
             ast[ast_count++] = node;
             if(pos < toks_count && toks[pos].type == T_EOL) ++pos;
         }
-// !section data
-//  msg: u8 "hello world!", 0
-//  msg2: u16 0x1000, 30
-// !section
-//
-//
-//
-//
+
         if (pos < toks_count && toks[pos].type != T_EOF) {
             pos++;
         }
@@ -2996,7 +3006,8 @@ void parseInst(AST* node) {
             // ModR/M: mod=11 (register), reg=extension, rm=register
             if(!strcasecmp(node->cmd, "jmp")) { // jmp
                 modrm = (0b11 << 6) | (0b100 << 3) | (reg_idx & 7);  // FF /4
-            } else { // call
+            } 
+            else { // call
                 modrm = (0b11 << 6) | (0b010 << 3) | (reg_idx & 7);  // FF /2
             }
             
@@ -3088,7 +3099,7 @@ void ELFgenfile(FILE *fl, uint64_t e_entry, uint8_t *text_code, uint64_t text_si
     };
 
     uint64_t text_offset = 0x1000; 
-    uint64_t text_vaddr  = e_entry; 
+    uint64_t text_vaddr  = 0x401000; 
 
     memcpy(&elf_header[0x18], &e_entry, 8);
     fwrite(elf_header, 1, 64, fl);
@@ -3130,7 +3141,7 @@ void ELFgenfile(FILE *fl, uint64_t e_entry, uint8_t *text_code, uint64_t text_si
     fwrite(text_code, 1, text_size, fl);
 }
 
-void compiler(uint8_t *text, int *textsize) {
+void compiler(uint8_t *text, int *textsize, uint64_t *e_entry) {
     if (!text) return;
     int pos = 0;
 
@@ -3144,7 +3155,7 @@ void compiler(uint8_t *text, int *textsize) {
         }
     }
 
-    collect_labels();
+    *e_entry = collect_labels();
     resolve_labels();
 
     for (int i = 0; i < ast_count; ++i) {
@@ -3180,6 +3191,7 @@ void compiler(uint8_t *text, int *textsize) {
 void handl_pipeline(int argc, char **argv){ // second main() in 1 pthread (for keeping code clean)
     static uint8_t text[1024 * 64];
     int textsize = 0;
+    uint64_t entry_point = 0x401000; // default
 
     FILE *input = fopen(argv[0], "r");
     LEXER(input);
@@ -3191,8 +3203,8 @@ void handl_pipeline(int argc, char **argv){ // second main() in 1 pthread (for k
     
     FILE *output = fopen(argv[1], "wb");
 
-    compiler(text, &textsize);
-    ELFgenfile(output, 0x401000, text, textsize);
+    compiler(text, &textsize, &entry_point);
+    ELFgenfile(output, entry_point, text, textsize);
     DEBUG_PRINT_AST();
 
     fclose(output);
@@ -3202,7 +3214,7 @@ void handl_pipeline(int argc, char **argv){ // second main() in 1 pthread (for k
 
 int main(int argc, char **argv){
     if (argc < 2) {
-        printf("AmmAsm v1.3: \033[5;41mFatal: No file given\033[0m\n");
+        printf("AmmAsm v1.4: \033[5;41mFatal: No file given\033[0m\n");
         return 1;
     }
 
@@ -3216,7 +3228,7 @@ int main(int argc, char **argv){
     }
 
     if (!input) {
-        printf("AmmAsm v1.2: \033[5;41mFatal: No input file given\033[0m\n");
+        printf("AmmAsm v1.4: \033[5;41mFatal: No input file given\033[0m\n");
         return 1;
     }
 
