@@ -1,6 +1,6 @@
-# AmmAsm - x86-64 Assembler
+# AmmAsm — x86-64 Assembler
 
-**Version:** 1.4  
+**Version:** 1.5  
 **Author:** Ammar Najafli  
 **License:** MIT  
 
@@ -8,163 +8,219 @@ AmmAsm is a lightweight, handwritten x86-64 assembler designed for simplicity an
 
 ---
 
-## Features
+## What's New in v1.5
 
-- **Direct x86-64 encoding** - No NASM/GAS dependencies  
-- **Multiple operand sizes** - 8/16/32/64-bit registers and immediates  
-- **Memory addressing** - Full SIB/ModRM support with explicit syntax  
-- **Label support** - Global and local labels with symbol resolution  
-- **Inline literals** - Embed strings and data directly in .text section  
-- **Control flow** - `jmp`, `call` with relative addressing  
-- **Two-pass linker** - Built-in symbol resolution and relocation  
-- **Hex/Binary/Octal literals** - `0xDEADBEEF`, `0b1010`, `0o777`  
-- **ELF output** - Generates valid Linux x86-64 executables  
-- **Clean error messages** - Line numbers and helpful diagnostics  
+### New Instructions
+- **`cmp`** — Compare instruction for all operand sizes (reg/reg, reg/imm), with proper opcode selection (`0x80`/`0x81`/`0x83`/`0x39`/`0x3A`) and short form for `al`/`ax`/`eax`/`rax`
+- **JCC** — Full set of conditional jumps with `rel32` encoding:
+
+
+### Backend Refactoring
+- **`encode_mov_rm_rm()`** — Unified memory-operand encoder now handles all 10 ModRM/SIB addressing cases in a single function, replacing the scattered per-case logic from v1.4
+- **`parse_addr_expr()`** — Address expression parser rewritten for clarity; validates all constraints (scale without index, `rsp` as index, empty expression) at parse time with precise error messages
+- **`encode_mov_reg_imm()`** / **`encode_mov_reg_reg()`** — Extracted as standalone helpers, usable beyond `mov` (prep for `add`, `sub`, etc.)
+- **REX prefix generation** — Centralized: `REX_BASE | REX_W | REX_R | REX_X | REX_B` flags composed consistently across all encoders
+- **`indexof()` / `find_reg*_index()`** — Register lookup split into human-readable helpers vs. raw CPU encoding, no longer mixed
 
 ---
 
-## What's New in v1.4
+## Features
 
-### Major Features
-- **Dynamic Entry Point** - The linker now searches for the `_start` label to set the ELF entry point. If `_start` is not found, the default entry point `0x401000` is used.
+- **Direct x86-64 encoding** — No NASM/GAS dependencies
+- **Multiple operand sizes** — 8/16/32/64-bit registers and immediates
+- **Memory addressing** — Full SIB/ModRM support with explicit key-value syntax
+- **Label support** — Global and local labels with two-pass symbol resolution
+- **Inline literals** — Embed strings and data directly in `.text`
+- **Control flow** — `jmp`, `call`, conditional jumps with relative addressing
+- **Two-pass linker** — Built-in symbol resolution and relocation
+- **Numeric literals** — `0xDEADBEEF`, `0b1010`, `0o777`, decimal, negative
+- **ELF output** — Generates valid Linux x86-64 executables
+
+---
+
+> Assembling x86-64 code → generating machine code → running binary
+
+[![Demo](https://img.youtube.com/vi/P-bdMZXXyVg/0.jpg)](https://youtube.com/watch?v=P-bdMZXXyVg)
 
 ---
 
 ## Pipeline Stages
 
-### Lexer (LEXER) - Converts text to tokens
-- Recognizes instructions, registers, literals, labels
-- Handles comments (`//`, `;`, `/* */`)
-- Supports multiple number bases (hex, binary, octal, decimal)
-- Label scoping (global `label:`, local `.label:`)
-- Character literals (`'A'`, `'\n'`, `'\0'`)
+### 1. Lexer (`LEXER`)
+Converts source text to a flat token stream.
 
-### Parser (PARSE) - Builds Abstract Syntax Tree
-- Validates instruction operands
-- Resolves operand types (REG/IMM/MEM/LABEL/CHAR)
-- Handles label scoping (global/local)
-- Creates AST nodes for instructions, labels, and data
+- Recognizes instructions, registers (`%rax`), literals, labels, directives
+- Comments: `//`, `;`, `/* ... */`
+- Number bases: hex (`0x`), binary (`0b`), octal (`0o`), decimal
+- Label scoping: global `label:`, local `.label:` (scoped to last global)
+- Character literals: `'A'`, `'\n'`, `'\0'`
 
-### Code Generator (parseInst) - Emits x86-64 machine code
-- REX prefix generation for 64-bit operations
-- ModR/M and SIB byte encoding for memory addressing
-- Displacement and immediate value encoding
-- Placeholder generation for unresolved labels
+### 2. Parser (`PARSE`)
+Builds the Abstract Syntax Tree.
 
-### Linker (collect_labels + resolve_labels)
-- **First pass**: Assigns addresses to all labels (PC = 0x401000 + offset)
-- **Second pass**: Resolves symbol references
-  - `MOV r64, label` -> RELOC_ABS64 (absolute 64-bit address)
-  - `JMP/CALL label` -> RELOC_REL32 (relative 32-bit offset)
+- Validates operand combinations per instruction
+- Resolves operand types: `O_REG8/16/32/64`, `O_IMM`, `O_MEM`, `O_LABEL`, `O_CHAR`
+- Produces typed AST nodes: `AST_INS`, `AST_LABEL`, `AST_U8/16/32/64`, `AST_SECTION`, etc.
 
-### Compiler (compiler) - Assembles final binary
-- Orchestrates all compilation passes
-- Collects machine code from AST
-- Writes ELF executable with proper headers
+### 3. Code Generator (`parseInst`)
+Emits x86-64 machine code per AST node.
+
+- REX prefix construction
+- ModR/M and SIB encoding via `encode_mov_rm_rm()`
+- Displacement and immediate encoding (little-endian via `As16/32/64`)
+- Placeholder bytes (`0x00000000`) for unresolved label references
+
+### 4. Linker (`collect_labels` + `resolve_labels`)
+Two-pass symbol resolution.
+
+- **Pass 1** — Walks AST, assigns `vaddr` to each `AST_LABEL` (base `0x401000`)
+- **Pass 2** — Patches placeholders:
+  - `MOV r64, label` → absolute 64-bit address (8 bytes at `mc[2]`)
+  - `JMP/CALL/JCC label` → `rel32 = target - (current_pc + inst_size)`
+
+### 5. Compiler (`compiler`)
+Orchestrates all passes and writes the final binary buffer.
 
 ---
 
-## Syntax
+## Syntax Reference
 
 ### Registers
-Prefix registers with `%`:
+Prefix with `%`:
 ```asm
 mov %rax, 42        ; 64-bit
-mov %eax, 42        ; 32-bit  
-mov %ax, 42         ; 16-bit
-mov %al, 42         ; 8-bit
-mov %r8, %r15       ; Extended registers (r8-r15)
+mov %eax, 42        ; 32-bit
+mov %ax,  42        ; 16-bit
+mov %al,  42        ; 8-bit
+mov %r8,  %r15      ; Extended regs r8–r15
 ```
 
 ### Numeric Literals
 ```asm
-mov %rax, 42        ; Decimal
-mov %rax, 0xff      ; Hexadecimal
-mov %rax, 0b1010    ; Binary
-mov %rax, 0o777     ; Octal
-mov %rax, -10       ; Negative numbers
-mov %al, 'A'        ; Character literal
+mov %rax, 42            ; Decimal
+mov %rax, 0xff          ; Hexadecimal
+mov %rax, 0b1010        ; Binary
+mov %rax, 0o777         ; Octal
+mov %rax, -10           ; Negative
+mov %al,  'A'           ; Character literal
+```
+
+### Memory Addressing
+Unlike NASM, AmmAsm uses an explicit key-value format inside `[...]`:
+
+| Key | Meaning | Example |
+|-----|---------|---------|
+| `b=REG` | Base register | `b=rbx` |
+| `i=REG` | Index register | `i=rcx` |
+| `s=N` | Scale (1/2/4/8) | `s=4` |
+| `d=N` | Displacement | `d=0x10` |
+
+```asm
+mov %rax, [b=rbx]                       ; [rbx]
+mov %rax, [b=rbx, d=16]                 ; [rbx + 16]
+mov %rax, [b=rbx, i=rcx, s=8]          ; [rbx + rcx*8]
+mov %rax, [b=rbx, i=rcx, s=8, d=0x10]  ; [rbx + rcx*8 + 16]
+mov [b=rsp, d=8], %rax                  ; store to [rsp+8]
 ```
 
 ### Data Directives
 ```asm
-; Byte arrays
-msg: u8 "Hello, World!", 0x0A, 0
-bytes: u8 0x01, 0x02, 0x03, 'A', 'B'
-
-; Word arrays (16-bit)
-words: u16 100, 200, 300, 0x1234
-
-; Double word arrays (32-bit)
-dwords: u32 0xDEADBEEF, 1000000, 0
-
-; Quad word arrays (64-bit)
-qwords: u64 0x123456789ABCDEF0, 999999999
+msg:    u8  "Hello, World!", 0x0A, 0
+bytes:  u8  0x01, 0x02, 0x03, 'A', 'B'
+words:  u16 100, 200, 300, 0x1234
+dwords: u32 0xDEADBEEF, 1000000
+qwords: u64 0x123456789ABCDEF0, 0
 ```
 
-### Memory Addressing
+### Comparison
 ```asm
-; Format: [b=base, i=index, s=scale, d=displacement]
-mov %rax, [b=rbx]                     ; [rbx]
-mov %rax, [b=rbx, d=16]               ; [rbx + 16]
-mov %rax, [b=rbx, i=rcx, s=8]         ; [rbx + rcx*8]
-mov %rax, [b=rbx, i=rcx, s=8, d=0x10] ; [rbx + rcx*8 + 0x10]
-mov [b=rsp, d=8], %rax                ; Memory destination
+cmp %rax, 42        ; rax vs immediate (64-bit)
+cmp %eax, %ebx      ; register vs register (32-bit)
+cmp %al,  'A'       ; 8-bit with char literal
 ```
 
-### Control Flow
+### Conditional Jumps
 ```asm
-; Unconditional jumps
-jmp label           ; Relative jump (E9 rel32)
-jmp %rax            ; Absolute jump via register (FF /4)
+cmp %rax, 0
+je  done            ; jump if equal
+jne loop            ; jump if not equal
+jl  less            ; jump if less (signed)
+jg  greater         ; jump if greater (signed)
+jb  below           ; jump if below (unsigned)
+ja  above           ; jump if above (unsigned)
+```
 
-; Function calls
-call func           ; Relative call (E8 rel32)
-call %rbx           ; Indirect call via register (FF /2)
+### Unconditional Control Flow
+```asm
+jmp  label          ; relative jump  (E9 rel32)
+jmp  %rax           ; indirect jump  (FF /4)
+call func           ; relative call  (E8 rel32)
+call %rbx           ; indirect call  (FF /2)
+ret                 ; return
+```
 
-; Loading label addresses
-mov %rax, msg       ; Load address of 'msg' into rax
+### Load Label Address
+```asm
+mov %rax, msg:      ; load virtual address of 'msg' into rax
 ```
 
 ### Arithmetic
 ```asm
-add %rax, 42        ; 64-bit
-add %eax, 42        ; 32-bit
-add %ax, 42         ; 16-bit
-add %al, 42         ; 8-bit
+add %rax, 42        ; 64-bit add
+add %eax, 100       ; 32-bit add
+add %ax,  0xff      ; 16-bit add
+add %al,  1         ; 8-bit add
 ```
 
 ---
 
-## Example Program N.1 (Hello World)
+## Examples
+
+### Hello World
 ```asm
 _start:
-    ; write(1, msg, len)
-    mov %rax, 1              ; sys_write
-    mov %rdi, 1              ; stdout
-    mov %rsi, msg:           ; buffer address
-    mov %rdx, 14             ; length
+    mov %rax, 1         ; sys_write
+    mov %rdi, 1         ; stdout
+    mov %rsi, msg:      ; buffer
+    mov %rdx, 14        ; length
     syscall
 
-    ; exit(0)
-    mov %rax, 60             ; sys_exit
-    mov %rdi, 0              ; status
+    mov %rax, 60        ; sys_exit
+    mov %rdi, 0
     syscall
 
 msg: u8 "Hello, World!", 0x0A
 ```
 
-## Example Program N.2 (Hello World)
+### Conditional Branch
 ```asm
-msg: u8 "Hello, World!\n", 0x0A, 0
+_start:
+    mov %rax, 10
+    cmp %rax, 10
+    je  equal
+    jmp done
+
+equal:
+    mov %rdi, 0
+    jmp done
+
+done:
+    mov %rax, 60
+    syscall
+```
+
+### strlen via inline machine code
+```asm
+msg: u8 "Hello, World!\n", 0
+
 _start:
     mov %rcx, -1
-    mov %rax, 0
-    mov %rdi, msg:
+    mov %rax,  0
+    mov %rdi,  msg:
 
-   .a: u8 0xf2, 0xAE       ; repne scasb
-   .b: u8 0x48, 0xF7, 0xD1 ; not rcx
-   .c: u8 0x48, 0xFF, 0xC9 ; dec rcx
+   .scan:  u8 0xF2, 0xAE           ; repne scasb
+   .fix1:  u8 0x48, 0xF7, 0xD1     ; not rcx
+   .fix2:  u8 0x48, 0xFF, 0xC9     ; dec rcx
 
     mov %rax, 1
     mov %rdi, 1
@@ -177,108 +233,53 @@ _start:
     syscall
 ```
 
+---
 
-**Compile and run:**
+
+## Building & Usage
+
 ```bash
-./aasm f=hello.asm o=hello
-chmod +x hello
-./hello
+# Build
+gcc -O2 -std=c99 Aasm.c -o aasm
+
+# Compile assembly
+./aasm input.asm
+./aasm f=input.asm o=output
+./aasm input.asm o=myprogram
+
+# Run
+chmod +x output && ./output
 ```
 
----
+**Options:**
 
-## Machine Code Example
-
-**Source:**
-```asm
-_start:
-    jmp skip
-    mov %rdi, 1
-skip:
-    mov %rax, 60
-    syscall
-
-msg: u8 "Hi", 0
-```
-
-**Generated (hexdump):**
-```
-00001000:  e9 0a 00 00 00              ; jmp +10 (skip label)
-00001005:  48 bf 01 00 00 00 00 00 00 00  ; mov rdi, 1
-0000100f:  48 b8 3c 00 00 00 00 00 00 00  ; mov rax, 60
-00001019:  0f 05                       ; syscall
-0000101b:  48 69 00                    ; "Hi\0" (inline literal)
-```
-
-**Linker work:**
-1. First pass: `skip` at `0x40100F`, `msg` at `0x40101B`
-2. Second pass: JMP offset = `0x40100F - (0x401000 + 5) = 0x0A`
-3. Patch: `E9 0A 00 00 00`
-
----
-
-## Design Philosophy
-
-AmmAsm prioritizes:
-- **Clarity over brevity** - Explicit `b=rbx` instead of cryptic NASM `[rbx]`
-- **Zero dependencies** - Pure C99, no external libraries
-- **Educational value** - Readable code for learning x86-64 encoding
-- **Simplicity** - Minimal feature set, maximum understanding
-- **Hackability** - Clean codebase for experimentation
+| Flag | Description |
+|------|-------------|
+| `f=<file>` or `<file>` | Input `.asm` file |
+| `o=<file>` | Output executable (default: `a.out`) |
 
 ---
 
 ## Known Limitations
 
-- Limited instruction set (MOV, ADD, JMP, CALL, SYSCALL)
-- No conditional jumps yet (JE, JNE, JG, etc.) - coming soon
+- Limited instruction set — `mov`, `add`, `cmp`, `jmp`, `call`, `jcc`, `syscall` (more coming)
+- `add reg, reg` not yet implemented
+- No `sub`, `mul`, `div`, `xor`, `or`, `and`, `shl`, `shr` encoding yet (parsed but not emitted)
 - No multi-file linking
+- No `.data` / `.bss` sections (everything in `.text`)
 - No macro system
-- No floating-point support (FPU)
-- No optimization passes (and never will be)
-- No .data/.bss sections yet (everything in .text)
-
----
-
-## Usage
-```bash
-# Basic compilation
-./aasm input.asm
-
-# Specify output file
-./aasm f=input.asm o=output
-
-# Alternative syntax
-./aasm input.asm o=myprogram
-```
-
-**Command-line options:**
-- `f=<file>` or `<file>` - Input assembly file
-- `o=<file>` - Output executable (default: `a.out`)
+- No floating-point (FPU/SSE)
+- No optimization passes (intentional)
 
 ---
 
 ## Resources
 
-- [Intel 64 and IA-32 Architectures Software Developer's Manual](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html)
-- [x86-64 Instruction Encoding](https://wiki.osdev.org/X86-64_Instruction_Encoding)
-- [ELF Format Specification](https://refspecs.linuxfoundation.org/elf/elf.pdf)
-- [System V ABI AMD64](https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf)
+- [Intel SDM — IA-32/x86-64 Developer Manual](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html)
+- [x86-64 Instruction Encoding — OSDev Wiki](https://wiki.osdev.org/X86-64_Instruction_Encoding)
+- [ELF Specification](https://refspecs.linuxfoundation.org/elf/elf.pdf)
+- [System V AMD64 ABI](https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf)
 
 ---
 
-## Building from Source
-```bash
-gcc -O2 -Wall -Wextra -std=c99 Aasm.c -o aasm
-```
-
-**Requirements:**
-- GCC or Clang
-- Linux x86-64
-- C99 standard library
-
----
-
-**Note:** Bug fixes and improvements will be released with new versions.
-
-**Made by a 14 y.o system programmer (me)**
+**Made by a 14 y.o. systems programmer.**
