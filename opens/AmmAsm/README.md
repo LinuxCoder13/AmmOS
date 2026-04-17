@@ -118,8 +118,8 @@ Unlike NASM, AmmAsm uses an explicit key-value format inside `[...]`:
 ```asm
 mov %rax, [b=rbx]                       ; [rbx]
 mov %rax, [b=rbx, d=16]                 ; [rbx + 16]
-mov %rax, [b=rbx, i=rcx, s=8]          ; [rbx + rcx*8]
-mov %rax, [b=rbx, i=rcx, s=8, d=0x10]  ; [rbx + rcx*8 + 16]
+mov %rax, [b=rbx, i=rcx, s=8]           ; [rbx + rcx*8]
+mov %rax, [b=rbx, i=rcx, s=8, d=0x10]   ; [rbx + rcx*8 + 16]
 mov [b=rsp, d=8], %rax                  ; store to [rsp+8]
 ```
 
@@ -142,12 +142,12 @@ cmp %al,  'A'       ; 8-bit with char literal
 ### Conditional Jumps
 ```asm
 cmp %rax, 0
-je  done            ; jump if equal
-jne loop            ; jump if not equal
-jl  less            ; jump if less (signed)
-jg  greater         ; jump if greater (signed)
-jb  below           ; jump if below (unsigned)
-ja  above           ; jump if above (unsigned)
+je  done:            ; jump if equal
+jne loop:            ; jump if not equal
+jl  less:            ; jump if less (signed)
+jg  greater:         ; jump if greater (signed)
+jb  below:           ; jump if below (unsigned)
+ja  above:           ; jump if above (unsigned)
 ```
 
 ### Unconditional Control Flow
@@ -156,7 +156,6 @@ jmp  label          ; relative jump  (E9 rel32)
 jmp  %rax           ; indirect jump  (FF /4)
 call func           ; relative call  (E8 rel32)
 call %rbx           ; indirect call  (FF /2)
-ret                 ; return
 ```
 
 ### Load Label Address
@@ -192,22 +191,6 @@ _start:
 msg: u8 "Hello, World!", 0x0A
 ```
 
-### Conditional Branch
-```asm
-_start:
-    mov %rax, 10
-    cmp %rax, 10
-    je  equal
-    jmp done
-
-equal:
-    mov %rdi, 0
-    jmp done
-
-done:
-    mov %rax, 60
-    syscall
-```
 
 ### strlen via inline machine code
 ```asm
@@ -218,9 +201,9 @@ _start:
     mov %rax,  0
     mov %rdi,  msg:
 
-   .scan:  u8 0xF2, 0xAE           ; repne scasb
-   .fix1:  u8 0x48, 0xF7, 0xD1     ; not rcx
-   .fix2:  u8 0x48, 0xFF, 0xC9     ; dec rcx
+   .a:  u8 0xF2, 0xAE           ; repne scasb
+   .b:  u8 0x48, 0xF7, 0xD1     ; not rcx
+   .c:  u8 0x48, 0xFF, 0xC9     ; dec rcx
 
     mov %rax, 1
     mov %rdi, 1
