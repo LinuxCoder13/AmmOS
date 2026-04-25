@@ -1,40 +1,44 @@
 # AmmAsm — x86-64 Assembler
 
-**Version:** 1.5  
-**Author:** Ammar Najafli  
-**License:** MIT  
+**Version:** 1.6
+**Author:** Ammar Najafli
+**License:** MIT
 
-AmmAsm is a lightweight, handwritten x86-64 assembler designed for simplicity and clarity. It compiles assembly code directly to machine code and produces **ELF executables** for Linux x86-64.
-
----
-
-## What's New in v1.5
-
-### New Instructions
-- **`cmp`** — Compare instruction for all operand sizes (reg/reg, reg/imm), with proper opcode selection (`0x80`/`0x81`/`0x83`/`0x39`/`0x3A`) and short form for `al`/`ax`/`eax`/`rax`
-- **JCC** — Full set of conditional jumps with `rel32` encoding:
-
-
-### Backend Refactoring
-- **`encode_mov_rm_rm()`** — Unified memory-operand encoder now handles all 10 ModRM/SIB addressing cases in a single function, replacing the scattered per-case logic from v1.4
-- **`parse_addr_expr()`** — Address expression parser rewritten for clarity; validates all constraints (scale without index, `rsp` as index, empty expression) at parse time with precise error messages
-- **`encode_mov_reg_imm()`** / **`encode_mov_reg_reg()`** — Extracted as standalone helpers, usable beyond `mov` (prep for `add`, `sub`, etc.)
-- **REX prefix generation** — Centralized: `REX_BASE | REX_W | REX_R | REX_X | REX_B` flags composed consistently across all encoders
-- **`indexof()` / `find_reg*_index()`** — Register lookup split into human-readable helpers vs. raw CPU encoding, no longer mixed
+AmmAsm is a lightweight, handwritten x86-64 assembler designed for simplicity and clarity. It compiles assembly code directly to machine code and produces ELF executables for Linux x86-64.
 
 ---
 
-## Features
+## What's New in v1.6
 
-- **Direct x86-64 encoding** — No NASM/GAS dependencies
-- **Multiple operand sizes** — 8/16/32/64-bit registers and immediates
-- **Memory addressing** — Full SIB/ModRM support with explicit key-value syntax
-- **Label support** — Global and local labels with two-pass symbol resolution
-- **Inline literals** — Embed strings and data directly in `.text`
-- **Control flow** — `jmp`, `call`, conditional jumps with relative addressing
-- **Two-pass linker** — Built-in symbol resolution and relocation
-- **Numeric literals** — `0xDEADBEEF`, `0b1010`, `0o777`, decimal, negative
-- **ELF output** — Generates valid Linux x86-64 executables
+added new bugs.. lol I'm joking... or not...
+
+### RIP-Relative Addressing (Full Support)
+
+AmmAsm v1.6 now fully supports RIP-relative addressing for all memory operands. When a label is used as the base in an address expression, the assembler automatically emits `[rip + disp32]` encoding.
+
+RIP-relative examples:
+
+```
+mov %rax, [b=msg]           ; lea rax, [rip + offset]
+mov %rcx, [b=array, d=8]    ; [rip + array + 8]
+add %rdx, [b=counter]       ; add rdx, [rip + counter]
+```
+*Important*: Local labels require full qualification
+
+When accessing a local label (starting with dot) in an address expression, you must use the full path: [b=global.local]
+
+```asm
+_start:
+    mov %rax, [b=_start.msg]    ; correct - full qualification
+    ; mov %rax, [b=.msg]        ; wrong - will fail
+
+    mov %rax, 1
+    mov %rdi, 1
+    mov %rsi, msg:
+    syscall
+
+.msg: u8 "Hello!", 0
+```
 
 ---
 
@@ -44,41 +48,110 @@ AmmAsm is a lightweight, handwritten x86-64 assembler designed for simplicity an
 
 ---
 
+How it works:
+
+- When `b=LABEL` (a label name instead of register) -> parse_addr_expr() sets is_rip_rel = 1
+- Encoder emits ModR/M: mod=00, r/m=101 (RIP-relative encoding)
+- Displacement placeholder 0x00000000 is emitted
+- Linker (resolve_labels()) calculates disp32 = target_addr - (current_pc + inst_size) + user_disp
+- Final disp32 patched into the 4-byte displacement field
+
+### Instruction add — Completed (All Forms)
+
+The add instruction is now fully implemented in v1.6 (was partial in v1.5):
+
+| Form | Encoding | Status |
+|------|----------|--------|
+| add reg, imm | 0x80/0x81/0x83 + ModR/M | Full |
+| add reg, reg | 0x00/0x01 + ModR/M (mod=11) | Full |
+| add reg, [addr] | 0x02/0x03 + SIB/ModRM | Full |
+| add [addr], reg | 0x00/0x01 + SIB/ModRM | Full |
+| add rax, imm (short form) | 0x04/0x05 | Full |
+| All sizes (8/16/32/64) | REX.W + operands | Full |
+| Extended registers r8-r15 | REX.B/R/R/X | Full |
+
+What "completion" means:
+
+- Previously: add had limited forms (only add reg, imm worked)
+- v1.6: Every combination of register/memory/immediate works identically to mov
+- All 10 ModRM/SIB addressing modes supported via unified encode_inst_rm_rm()
+
+### Full Change Summary (v1.5 -> v1.6)
+
+| Feature | v1.5 | v1.6 |
+|---------|------|------|
+| RIP-relative addressing | Not supported | Full support |
+| add reg, imm | Partial | Full |
+| add reg, reg | Not implemented | Full |
+| add reg, mem | Not implemented | Full |
+| add mem, reg | Not implemented | Full |
+| add short forms (rax) | Not implemented | Full |
+
+---
+
+### Backend Refactoring
+
+- encode_inst_rm_rm() — Unified memory-operand encoder now handles all 10 ModRM/SIB addressing cases in a single function
+- Register lookup — Split into human-readable helpers vs. raw CPU encoding
+
+---
+
+## Features
+
+- Direct x86-64 encoding — No NASM/GAS dependencies
+- Multiple operand sizes — 8/16/32/64-bit registers and immediates
+- Memory addressing — Full SIB/ModRM support with explicit key-value syntax
+- RIP-relative addressing — Automatic for label bases (v1.6)
+- Label support — Global and local labels with two-pass symbol resolution
+- Inline literals — Embed strings and data directly in .text
+- Control flow — jmp, call, conditional jumps with relative addressing
+- Two-pass linker — Built-in symbol resolution and relocation
+- Numeric literals — 0xDEADBEEF, 0b1010, 0o777, decimal, negative
+- ELF output — Generates valid Linux x86-64 executables
+
+---
+
 ## Pipeline Stages
 
-### 1. Lexer (`LEXER`)
+### 1. Lexer (LEXER)
+
 Converts source text to a flat token stream.
 
-- Recognizes instructions, registers (`%rax`), literals, labels, directives
-- Comments: `//`, `;`, `/* ... */`
-- Number bases: hex (`0x`), binary (`0b`), octal (`0o`), decimal
-- Label scoping: global `label:`, local `.label:` (scoped to last global)
-- Character literals: `'A'`, `'\n'`, `'\0'`
+- Recognizes instructions, registers (%rax), literals, labels, directives
+- Comments: //, ;, /* ... */
+- Number bases: hex (0x), binary (0b), octal (0o), decimal
+- Label scoping: global label:, local .label: (scoped to last global)
+- Character literals: 'A', '\n', '\0'
 
-### 2. Parser (`PARSE`)
+### 2. Parser (PARSE)
+
 Builds the Abstract Syntax Tree.
 
 - Validates operand combinations per instruction
-- Resolves operand types: `O_REG8/16/32/64`, `O_IMM`, `O_MEM`, `O_LABEL`, `O_CHAR`
-- Produces typed AST nodes: `AST_INS`, `AST_LABEL`, `AST_U8/16/32/64`, `AST_SECTION`, etc.
+- Resolves operand types: O_REG8/16/32/64, O_IMM, O_MEM, O_LABEL, O_CHAR
+- Produces typed AST nodes: AST_INS, AST_LABEL, AST_U8/16/32/64, AST_SECTION, etc.
 
-### 3. Code Generator (`parseInst`)
+### 3. Code Generator (parseInst)
+
 Emits x86-64 machine code per AST node.
 
 - REX prefix construction
-- ModR/M and SIB encoding via `encode_mov_rm_rm()`
-- Displacement and immediate encoding (little-endian via `As16/32/64`)
-- Placeholder bytes (`0x00000000`) for unresolved label references
+- ModR/M and SIB encoding via encode_inst_rm_rm()
+- Displacement and immediate encoding (little-endian via As16/32/64)
+- Placeholder bytes (0x00000000) for unresolved label references
 
-### 4. Linker (`collect_labels` + `resolve_labels`)
+### 4. Linker (collect_labels + resolve_labels)
+
 Two-pass symbol resolution.
 
-- **Pass 1** — Walks AST, assigns `vaddr` to each `AST_LABEL` (base `0x401000`)
-- **Pass 2** — Patches placeholders:
-  - `MOV r64, label` → absolute 64-bit address (8 bytes at `mc[2]`)
-  - `JMP/CALL/JCC label` → `rel32 = target - (current_pc + inst_size)`
+- Pass 1 — Walks AST, assigns vaddr to each AST_LABEL (base 0x401000)
+- Pass 2 — Patches placeholders:
+  - MOV r64, label -> absolute 64-bit address (8 bytes at mc[2])
+  - JMP/CALL/JCC label -> rel32 = target - (current_pc + inst_size)
+  - RIP-relative -> disp32 = target - (current_pc + inst_size) + user_disp
 
-### 5. Compiler (`compiler`)
+### 5. Compiler (compiler)
+
 Orchestrates all passes and writes the final binary buffer.
 
 ---
@@ -86,17 +159,20 @@ Orchestrates all passes and writes the final binary buffer.
 ## Syntax Reference
 
 ### Registers
-Prefix with `%`:
-```asm
+
+Prefix with %:
+
+```
 mov %rax, 42        ; 64-bit
 mov %eax, 42        ; 32-bit
 mov %ax,  42        ; 16-bit
 mov %al,  42        ; 8-bit
-mov %r8,  %r15      ; Extended regs r8–r15
+mov %r8,  %r15      ; Extended regs r8-r15
 ```
 
 ### Numeric Literals
-```asm
+
+```
 mov %rax, 42            ; Decimal
 mov %rax, 0xff          ; Hexadecimal
 mov %rax, 0b1010        ; Binary
@@ -106,25 +182,31 @@ mov %al,  'A'           ; Character literal
 ```
 
 ### Memory Addressing
-Unlike NASM, AmmAsm uses an explicit key-value format inside `[...]`:
+
+Unlike NASM, AmmAsm uses an explicit key-value format inside [...]:
 
 | Key | Meaning | Example |
 |-----|---------|---------|
-| `b=REG` | Base register | `b=rbx` |
-| `i=REG` | Index register | `i=rcx` |
-| `s=N` | Scale (1/2/4/8) | `s=4` |
-| `d=N` | Displacement | `d=0x10` |
+| b=REG | Base register | b=rbx |
+| i=REG | Index register | i=rcx |
+| s=N | Scale (1/2/4/8) | s=4 |
+| d=N | Displacement | d=0x10 |
 
-```asm
+```
 mov %rax, [b=rbx]                       ; [rbx]
 mov %rax, [b=rbx, d=16]                 ; [rbx + 16]
 mov %rax, [b=rbx, i=rcx, s=8]           ; [rbx + rcx*8]
 mov %rax, [b=rbx, i=rcx, s=8, d=0x10]   ; [rbx + rcx*8 + 16]
 mov [b=rsp, d=8], %rax                  ; store to [rsp+8]
+
+; RIP-relative (new in v1.6)
+mov %rax, [b=msg]                       ; load from msg
+mov %rax, [b=msg, d=4]                  ; msg + 4
 ```
 
 ### Data Directives
-```asm
+
+```
 msg:    u8  "Hello, World!", 0x0A, 0
 bytes:  u8  0x01, 0x02, 0x03, 'A', 'B'
 words:  u16 100, 200, 300, 0x1234
@@ -152,23 +234,15 @@ ja  above:           ; jump if above (unsigned)
 
 ### Unconditional Control Flow
 ```asm
-jmp  label          ; relative jump  (E9 rel32)
+jmp  label:         ; relative jump  (E9 rel32)
 jmp  %rax           ; indirect jump  (FF /4)
-call func           ; relative call  (E8 rel32)
+call func:          ; relative call  (E8 rel32)
 call %rbx           ; indirect call  (FF /2)
 ```
 
 ### Load Label Address
 ```asm
 mov %rax, msg:      ; load virtual address of 'msg' into rax
-```
-
-### Arithmetic
-```asm
-add %rax, 42        ; 64-bit add
-add %eax, 100       ; 32-bit add
-add %ax,  0xff      ; 16-bit add
-add %al,  1         ; 8-bit add
 ```
 
 ---
@@ -190,33 +264,6 @@ _start:
 
 msg: u8 "Hello, World!", 0x0A
 ```
-
-
-### strlen via inline machine code
-```asm
-msg: u8 "Hello, World!\n", 0
-
-_start:
-    mov %rcx, -1
-    mov %rax,  0
-    mov %rdi,  msg:
-
-   .a:  u8 0xF2, 0xAE           ; repne scasb
-   .b:  u8 0x48, 0xF7, 0xD1     ; not rcx
-   .c:  u8 0x48, 0xFF, 0xC9     ; dec rcx
-
-    mov %rax, 1
-    mov %rdi, 1
-    mov %rsi, msg:
-    mov %rdx, %rcx
-    syscall
-
-    mov %rax, 60
-    mov %rdi, 0
-    syscall
-```
-
----
 
 
 ## Building & Usage
@@ -246,8 +293,6 @@ chmod +x output && ./output
 ## Known Limitations
 
 - Limited instruction set — `mov`, `add`, `cmp`, `jmp`, `call`, `jcc`, `syscall` (more coming)
-- `add reg, reg` not yet implemented
-- No `sub`, `mul`, `div`, `xor`, `or`, `and`, `shl`, `shr` encoding yet (parsed but not emitted)
 - No multi-file linking
 - No `.data` / `.bss` sections (everything in `.text`)
 - No macro system
@@ -264,5 +309,7 @@ chmod +x output && ./output
 - [System V AMD64 ABI](https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf)
 
 ---
+
+- So today AmmAsm can compile any Thuring full assembly code 
 
 **Made by a 14 y.o. systems programmer.**

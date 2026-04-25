@@ -6,7 +6,7 @@ aasm
 
 # Test files
 input
-input.asm
+*.asm
 test_*
 
 # Temporary files

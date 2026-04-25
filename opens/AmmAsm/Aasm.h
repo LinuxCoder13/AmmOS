@@ -47,13 +47,29 @@ typedef enum {
     SEC_TEXT
 } SECtype;
 
+typedef struct {
+    // must have
+    uint8_t base;
+    uint8_t index;
+    uint8_t scale;
+    int32_t disp;
+
+    uint8_t have_base;
+    uint8_t have_index;
+    uint8_t have_disp;
+
+    uint8_t is_rip_rel;
+    uint8_t label[64];
+
+} AddrExpr;
+
 
 typedef struct AST {
     ASTType type;
     char cmd[256];  // mostly useing for ins
 
     union {     
-        struct { uint8_t operands[4][35]; OperandType otype[4]; int oper_count; int resolved;} ins; // resolved -> for linking symbols. expr -> for sib
+        struct { uint8_t operands[4][35]; OperandType otype[4]; int oper_count; int resolved; AddrExpr expr;} ins; // resolved -> for linking symbols. expr -> for sib
         struct { uint8_t data[256]; int size; } u8;
         struct { uint8_t *data[256]; int size; } u8ptr;
         struct { uint16_t data[256]; int size; } u16;
@@ -74,18 +90,7 @@ typedef struct AST {
         uint8_t machine_code_size;
 } AST;
 
-typedef struct {
-    // must have
-    uint8_t base;
-    uint8_t index;
-    uint8_t scale;
-    int32_t disp;
 
-    uint8_t have_base;
-    uint8_t have_index;
-    uint8_t have_disp;
-
-} AddrExpr;
 
 typedef struct {
     int   type;       
@@ -103,9 +108,6 @@ typedef struct {
 /* == utility == */
 int    isin(const char *str, char c);
 int    is2arrin(const char *str[], char *str2);
-int    is_inst(char *s);
-int    is_reg(const char *s);
-int    is_literal(const char *s);
  
 /* == expression evaluator == */
 long   parse_number(void);
@@ -127,7 +129,6 @@ void   del_all_toks(void);
 void   DEBUG_PRINT_TOKENS(void);
  
 /* == register helpers == */
-int     indexof(const char **regs, char *reg);
 uint8_t find_reg64_index(const char *reg);
 uint8_t find_reg32_index(const char *reg);
 uint8_t find_reg16_index(const char *reg);
@@ -139,7 +140,8 @@ AddrExpr parse_addr_expr(const uint8_t *expr);
 /* == instruction encoders == */
 uint8_t encode_mov_reg_imm(uint8_t *mash_code, uint8_t reg_idx, uint64_t imm, uint8_t sz);
 uint8_t encode_mov_reg_reg(uint8_t *mash_code, uint8_t dest_idx, uint8_t src_idx, uint8_t sz);
-uint8_t encode_mov_rm_rm(uint8_t *mash_code, uint8_t reg_idx, const uint8_t *addrexpr, uint8_t sz, uint8_t opcode); 
+uint8_t encode_inst_rm_rm(uint8_t *mash_code, uint8_t reg_idx, AddrExpr *expr, uint8_t sz, uint8_t opcode);
+uint8_t encode_add_reg_reg(uint8_t *mash_code, uint8_t dest, uint8_t src, uint8_t sz);
 
 /* == lexer == */
 int    LEXER(FILE *fl);

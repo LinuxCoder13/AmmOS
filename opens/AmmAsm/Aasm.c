@@ -96,10 +96,8 @@ const char *HUMAN_AST[] = {
     "U64",    "U64PTR",
     NULL
 };
-const char *HUMAN_TOKEN[] = {"inst", "label", "reg", "[reg]", "[reg +-*/ value]", "string", NULL};
 
 /* name of label can include only this chars */
-const char *LET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_";
 
 const char *LETEXT = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_";
 const char* DIG    = "0123456789";
@@ -169,6 +167,9 @@ int line = 0;
 
 Token toks[MAX_TOKENS];
 int toks_count = 0;
+
+AST ast[MAX_TOKENS];
+int ast_count = 0;
 
 const char *p;
 
@@ -300,15 +301,6 @@ void del_all_toks(){
     }
 }
 
-int is_inst(char* s){
-    for(int i=0; CMDS[i]; ++i){
-        if(strcasecmp(s, CMDS[i]) == 0){
-            return 1;
-        }
-    }
-    //else
-    return 0;
-}
 
 void DEBUG_PRINT_TOKENS() {
     #ifdef DEBUG
@@ -350,53 +342,6 @@ void DEBUG_PRINT_TOKENS() {
     printf("=== END TOKENS ===\n\n");
     #endif
 }
-
-int is_reg(const char *s) __attribute__((__nonnull__(1)));
-int is_reg(const char *s){
-    // 1 = reg8
-    // 2 = reg16
-    // 3 = reg32
-    // 4 = reg64
-    // 5 = reg64GP
-    // 0 = undefined
-    while(isspace(*s))s++;
-    
-    for(int i=0; regs8[i]; i++){
-        if(strcasecmp(s, *(regs8+i)) == 0){
-            return 1;
-        }
-    }
-    for(int i=0; regs16[i]; i++){
-        if(strcasecmp(s, *(regs16+i)) == 0){
-            return 2;
-        }
-    }
-    for(int i=0; regs32[i]; i++){
-        if(strcasecmp(s, *(regs32+i)) == 0){
-            return 3;
-        }
-    }
-    for(int i=0; regs64[i]; i++){
-        if(strcasecmp(s, *(regs64+i)) == 0){
-            return 4;
-        }
-    }
-    for(int i=0; regs64GP[i]; i++){
-        if(strcasecmp(s, *(regs64GP+i)) == 0){
-            return 5;
-        }
-    }
-    return 0;
-}
-
-int is_literal(const char* s) __attribute__((__nonnull__(1)));
-int is_literal(const char* s) {
-    if ((s[0] >= '0' && s[0] <= '9') || s[0] == '-') {
-        return 1;
-    }
-    return 0;
-}
-
 
 
 char *read_string(char *buff, char *dest, int line) {
@@ -447,7 +392,60 @@ void As64(uint64_t a, unsigned char out[8]) {
     out[6] = (a >> 48) & 0xff;
     out[7] = (a >> 56) & 0xff;
 }
+void expand_local_labels(){
+    char global_lab[64] = {0};
+    int glob_defined = 0;
 
+    for(int i = 0; i < ast_count; ++i){
+        AST* node = &ast[i];
+
+        // --- LABEL ---
+        if(node->type == AST_LABEL){
+
+            if(node->label.name[0] != '.'){  
+                strncpy(global_lab, node->label.name, 63);
+                global_lab[63] = 0;
+                glob_defined = 1;
+            }
+            else {
+                if(!glob_defined){ 
+                    fprintf(stderr, "AmmAsm: Local label \"%s\" without global\n", node->label.name);
+                    exit(1);
+                }
+
+                char full[64];
+                snprintf(full, sizeof full, "%s%s", global_lab, node->label.name);
+                strncpy(node->label.name, full, 63);
+                node->label.name[63] = 0;
+            }
+        }
+
+        // --- INSTRUCTIONS ---
+        else if(node->type == AST_INS){
+
+            for(int j = 0; j < node->ins.oper_count; j++){
+
+                if(node->ins.otype[j] == O_LABEL){
+
+                    char* name = node->ins.operands[j];
+
+                    if(name[0] == '.'){
+
+                        if(!glob_defined){
+                            fprintf(stderr, "AmmAsm: local label used without global\n");
+                            exit(1);
+                        }
+
+                        char full[64];
+                        snprintf(full, sizeof(full), "%s%s", global_lab, name);
+                        strncpy(node->ins.operands[j], full, 63);
+                        node->ins.operands[j][63] = 0;
+                    }
+                }
+            }
+        }
+    }
+}
 
  
 // lexer:
@@ -518,7 +516,6 @@ int LEXER(FILE* fl) {
 
                 if (*buff == ':') {
                     buff++;
-                    strncpy(lexer.labelscope, buf, 256);
                     add_token(T_LAB, buf, line);
                     continue;
                 }
@@ -535,17 +532,14 @@ int LEXER(FILE* fl) {
             }
 
             else if (*buff == '.') { // local label
-                buff++;
                 char buf[256] = {0};
-                int i = 0;
-                while (isin(LETEXT, *buff)) {
+                buf[0] = '.'; buff++;
+                int i = 1;
+                while (isin(LETEXT, *buff) ) {
                     buf[i++] = *buff++;
                 }
-
-                char full[512] = {0};
-                if(lexer.labelscope[0] == 0){fprintf(stderr, "AmmAsm: Used local label with out global label on line \"%d\"", line); exit(1);}
-                snprintf(full, sizeof(full), "%s.%s", lexer.labelscope, buf); // labelscope + "." + buf
-
+                char full[64] = {0};
+                snprintf(full, 64, "%s", buf);
                 if (*buff == ':') {
                     buff++;
                     add_token(T_LAB, full, line);
@@ -721,8 +715,7 @@ int LEXER(FILE* fl) {
 }
 
 
-AST ast[MAX_TOKENS];
-int ast_count = 0;
+
 
 void DEBUG_PRINT_AST() {
     #ifdef DEBUG
@@ -939,7 +932,7 @@ void resolve_labels() {
             
             for (int j = 0; j < ast_count; j++) {
                 if (ast[j].type == AST_LABEL && 
-                    strcmp(ast[j].label.name, label_name) == 0) {
+                    !strcmp(ast[j].label.name, label_name)) {
                     label_addr = ast[j].label.vadress;
                     found = 1;
                     break;
@@ -967,12 +960,53 @@ void resolve_labels() {
             printf("Resolving %s %s: target=0x%lx, current=0x%lx, offset=%d\n",
                    node->cmd, label_name, label_addr, current_pc, rel32);
             #endif
-            
-            
-            
+
+            As32(rel32, &node->machine_code[node->machine_code_size - 4]);
             node->ins.resolved = 1;
         }
-        // SOON....
+        // [RIP REL] (DISP32)
+        else if(node->ins.expr.is_rip_rel &&
+        (node->ins.otype[0] == O_MEM || node->ins.otype[1] == O_MEM)){
+            const char* label = node->ins.expr.label;
+            uint64_t label_addr = 0;
+            int found = 0;  
+        
+            for(int j = 0; j < ast_count; j++){
+                if( ast[j].type == AST_LABEL && !strcmp(ast[j].label.name, label)){
+                    label_addr = ast[j].label.vadress;
+                    found = 1;
+                    break;
+                }
+            }
+            
+            if (!found) {
+                fprintf(stderr, "AmmAsm: Undefined label '%s'\n", label);
+                exit(1);
+            }
+
+            uint64_t current_pc = 0x401000;
+            for (int k = 0; k < i; k++) {
+                if ((ast[k].type == AST_INS && ast[k].machine_code_size > 0) ||
+                    (ast[k].type == AST_U8  && ast[k].machine_code_size > 0) ||
+                    (ast[k].type == AST_U16 && ast[k].machine_code_size > 0) ||
+                    (ast[k].type == AST_U32 && ast[k].machine_code_size > 0) ||
+                    (ast[k].type == AST_U64 && ast[k].machine_code_size > 0)) {
+                    current_pc += ast[k].machine_code_size;
+                }
+            }
+
+            
+            int32_t disp32 = (int32_t)(label_addr - (current_pc + node->machine_code_size)) + node->ins.expr.disp;
+
+
+            #ifdef DEBUG
+            printf("Resolving %s %s: target=0x%lx, current=0x%lx, offset=%d\n",
+                   node->cmd, label, label_addr, current_pc, disp32);
+            #endif      
+            As32((uint32_t)disp32, &node->machine_code[node->machine_code_size - 4]);
+
+            node->ins.resolved = 1;
+        }
     }
 }
 
@@ -1306,23 +1340,7 @@ AST* PARSE(){
     del_all_toks();
     return ast; // for debug
 }
-// How cpu see regs
-int indexof(const char** regs, char* reg){
 
-    if(!is2arrin(regs, reg)) return -1;
-
-    return 
-    (!strcasecmp(reg, "rax") || !strcasecmp(reg, "r8") || !strcasecmp(reg, "eax") || !strcasecmp(reg, "ax") || !strcasecmp(reg, "al") || !strcasecmp(reg, "r8d") || !strcasecmp(reg, "r8w") || !strcasecmp(reg, "r8b"))      ? 0b000 :
-    (!strcasecmp(reg, "rcx") || !strcasecmp(reg, "r9") || !strcasecmp(reg, "ecx") || !strcasecmp(reg, "cx") || !strcasecmp(reg, "cl") || !strcasecmp(reg, "r9d") || !strcasecmp(reg, "r9w") || !strcasecmp(reg, "r9b"))      ? 0b001 :
-    (!strcasecmp(reg, "rdx") || !strcasecmp(reg, "r10") || !strcasecmp(reg, "edx") || !strcasecmp(reg, "dx") || !strcasecmp(reg, "dl") || !strcasecmp(reg, "r10d") || !strcasecmp(reg, "r10w") || !strcasecmp(reg, "r10b"))  ? 0b010 :
-    (!strcasecmp(reg, "rbx") || !strcasecmp(reg, "r11") || !strcasecmp(reg, "ebx") || !strcasecmp(reg, "bx") || !strcasecmp(reg, "bl") || !strcasecmp(reg, "r11d") || !strcasecmp(reg, "r11w") || !strcasecmp(reg, "r11b"))  ? 0b011 :
-    (!strcasecmp(reg, "rsp") || !strcasecmp(reg, "r12") || !strcasecmp(reg, "esp") || !strcasecmp(reg, "sp") || !strcasecmp(reg, "spl") || !strcasecmp(reg, "r12d") || !strcasecmp(reg, "r12w") || !strcasecmp(reg, "r12b")) ? 0b100 :
-    (!strcasecmp(reg, "rbp") || !strcasecmp(reg, "r13") || !strcasecmp(reg, "ebp") || !strcasecmp(reg, "bp") || !strcasecmp(reg, "bpl") || !strcasecmp(reg, "r13d") || !strcasecmp(reg, "r13w") || !strcasecmp(reg, "r13b")) ? 0b101 :
-    (!strcasecmp(reg, "rsi") || !strcasecmp(reg, "r14") || !strcasecmp(reg, "esi") || !strcasecmp(reg, "si") || !strcasecmp(reg, "sil") || !strcasecmp(reg, "r14d") || !strcasecmp(reg, "r14w") || !strcasecmp(reg, "r14b")) ? 0b110 :
-    (!strcasecmp(reg, "rdi") || !strcasecmp(reg, "r15") || !strcasecmp(reg, "edi") || !strcasecmp(reg, "di") || !strcasecmp(reg, "dil") || !strcasecmp(reg, "r15d") || !strcasecmp(reg, "r15w") || !strcasecmp(reg, "r15b")) ? 0b111 : -1;
-}
-
-// For human readable
 uint8_t find_reg64_index(const char* reg) {
     for (int i=0; i<8; i++) {
         if (strcasecmp(regs64[i], reg) == 0) return i;
@@ -1466,13 +1484,14 @@ Output:
 #define emit_modrm(mod, reg, rm) (((mod & 7) << 6) | ((reg & 7) << 3) | (rm & 7))
 #define emit_sib(scale, idx, base) (((scale & 3) << 6) | ((idx & 7) << 3) | (base & 7))
 
+
 // this function will return 1 fully parsed addexpr for sib_gen_byte() 
 // parsing only GP registers (rax..r15)
 AddrExpr parse_addr_expr(const uint8_t* expr) {
     AddrExpr new = { 0 };
     const uint8_t *p = expr;
     uint8_t find_b = 0, find_i = 0, find_s = 0, find_d = 0; 
-    uint8_t base[4], index[4], scale[3], disp[32];
+    uint8_t base[64], index[4], scale[3], disp[32];
     base[0] = 0; index[0] = 0; scale[0] = 0; disp[0] = 0;
 
     scale[0] = '1'; // base value
@@ -1556,13 +1575,14 @@ AddrExpr parse_addr_expr(const uint8_t* expr) {
         exit(1);
     }
 
-    if (new.have_base && find_reg64_index(base) == -1) {
-        fprintf(stderr, "AmmAsm: Line %d: invalid base register name '%s'\n", line, new.base);
-        exit(1);
+    if (new.have_base && find_reg64_index(base) == (uint8_t)-1) {
+        strncpy(new.label, base, sizeof new.label);
+        new.is_rip_rel = 1;
+        new.have_base = 0;
     }
 
-    if (new.have_index && find_reg64_index(index) == -1) {
-        fprintf(stderr, "AmmAsm: Line %d: invalid index register name '%s'\n", line, new.index);
+    if (new.have_index && find_reg64_index(index) == (uint8_t)-1) {
+        fprintf(stderr, "AmmAsm: Line %d: invalid index register name '%s'\n", line, index);
         exit(1);
     }
     
@@ -1677,8 +1697,10 @@ uint8_t encode_mov_reg_reg(uint8_t *mash_code, uint8_t dest_idx, uint8_t src_idx
     return pos;
 }
 
-// mov reg, [addr]
-uint8_t encode_mov_rm_rm(uint8_t *mash_code, uint8_t reg, const uint8_t *addrexpr, uint8_t sz,  uint8_t opcode){
+
+
+// inst reg, [addr] | inst [addr], reg
+uint8_t encode_inst_rm_rm(uint8_t *mash_code, uint8_t reg, AddrExpr *expr, uint8_t sz,  uint8_t opcode){
     uint8_t legacy_prefix = 0x66; // 16 bit
     uint8_t rex = 0;
     uint8_t modrm = 0;
@@ -1687,10 +1709,10 @@ uint8_t encode_mov_rm_rm(uint8_t *mash_code, uint8_t reg, const uint8_t *addrexp
     uint8_t disp_sz = 0;
     uint8_t mod;
     int pos = 0;
-    AddrExpr new = parse_addr_expr(addrexpr);
+
     // sib
-    uint8_t base  = new.base;
-    uint8_t index = new.index; // if index == 0b100 then no index
+    uint8_t base  = expr->base;
+    uint8_t index = expr->index; // if index == 0b100 then no index
     uint8_t scale = 0b00; // base value
 
     switch(sz){
@@ -1700,13 +1722,12 @@ uint8_t encode_mov_rm_rm(uint8_t *mash_code, uint8_t reg, const uint8_t *addrexp
         case 8:  break;
     }
 
-    switch(new.scale){
+    switch(expr->scale){
         case 1: scale = 0b00; break;
         case 2: scale = 0b01; break;
         case 4: scale = 0b10; break;
         case 8: scale = 0b11; break;
     }
-    printf("%d__%d", scale, new.scale);
     /*  
     
     Addresing | mod | r/m| SIB?| disp? |
@@ -1721,6 +1742,7 @@ uint8_t encode_mov_rm_rm(uint8_t *mash_code, uint8_t reg, const uint8_t *addrexp
  8. |[b+i*s]  | 00  | 100| yes | n/a   | v
  9. |[b+i+d*s]|01/10| 100| yes | d8/d32| v
  10.|[i*s+d32]| 00  | 100|b=101| disp32| v
+ 11.|[rip+d32]| 00  | 101| n/a | disp32| v
             [DONE] :-)
     */
 
@@ -1728,10 +1750,10 @@ uint8_t encode_mov_rm_rm(uint8_t *mash_code, uint8_t reg, const uint8_t *addrexp
     if(base >= 8)  rex |= REX_B;
     if(index >= 8) rex |= REX_X;
 
-    if(new.have_disp && new.disp == 0) new.have_disp = 0;
-    if(!new.have_disp){ mod = 0b00; new.have_disp = 0;}
-    else if(new.disp >= -128 && new.disp <= 127){ mod = 0b01; new.have_disp = 1; disp_sz = 1;} 
-    else /* disp fits in int32_t */ {mod = 0b10; new.have_disp = 1; disp_sz = 4;}
+    if(expr->have_disp && expr->disp == 0) expr->have_disp = 0;
+    if(!expr->have_disp){ mod = 0b00; expr->have_disp = 0;}
+    else if(expr->disp >= -128 && expr->disp <= 127){ mod = 0b01; expr->have_disp = 1; disp_sz = 1;} 
+    else /* disp fits in int32_t */ {mod = 0b10; expr->have_disp = 1; disp_sz = 4;}
 
     // 4, 5, 6.
     if(base == 0b100){ // rsp, r12
@@ -1742,47 +1764,175 @@ uint8_t encode_mov_rm_rm(uint8_t *mash_code, uint8_t reg, const uint8_t *addrexp
     // 7.
     else if(base == 0b101){ // rbp, r13
         mod = 0b01;
-        new.disp = new.have_disp ? new.disp : 0;
+        expr->disp = expr->have_disp ? expr->disp : 0;
         disp_sz = 1;
-        new.have_disp = 1;
+        expr->have_disp = 1;
         modrm = emit_modrm(mod, reg, 0b101);
     }
 
     // 8, 9
-    else if(new.have_index){
+    else if(expr->have_index){
         modrm = emit_modrm(mod, reg, 0b100);
         sib   = emit_sib(scale, index, base);
         need_sib = 1;
     }
 
     // 1, 2, 3
-    else if(new.have_base && new.have_disp && !new.have_index){
+    else if(expr->have_base && expr->have_disp && !expr->have_index){
         modrm = emit_modrm(mod, reg, base);
         need_sib = 0;
     }
-
+        
     // 10.
-    else if(!new.have_base){
+    else if(!expr->is_rip_rel && !expr->have_base && expr->have_disp){
         modrm = emit_modrm(0b00, reg, 0b100);
         sib   = emit_sib(scale, index, 0b101);
         need_sib = 1;
-        new.have_disp = 1;
+        expr->have_disp = 1;
         disp_sz = 4;
     }
+
+    // 11.
+    else if(expr->is_rip_rel && !expr->have_base){
+        modrm = emit_modrm(0b00, reg, 0b101);
+        need_sib = 0;
+    }
     
-    
-    if(rex) mash_code[pos++] = rex;
+    if(rex != 0) mash_code[pos++] = rex | REX_BASE;
     mash_code[pos++] = opcode;
     mash_code[pos++] = modrm;
     if(need_sib) mash_code[pos++] = sib;
-    if(new.have_disp){
-        if(disp_sz == 1) mash_code[pos++] = (uint8_t)new.disp;
-        else {As32(new.disp, &mash_code[pos]); pos+=4; }
+    if(expr->have_disp && !expr->is_rip_rel){
+        if(disp_sz == 1) mash_code[pos++] = (uint8_t)expr->disp;
+        else {As32(expr->disp, &mash_code[pos]); pos+=4; }
     }
+    else if(expr->is_rip_rel){As32(0x00000000, &mash_code[pos]); pos+=4; } // placeholder
     return pos;
 }
 
+uint8_t encode_add_imm(uint8_t *mash_code, uint8_t reg, const uint8_t* val, uint8_t sz){
+    uint8_t rex = 0;
+    uint8_t opcode = 0;
+    uint8_t modrm = 0;
+    uint32_t imm = 0;
+    uint8_t rm = reg;
+    int pos = 0;
 
+    if (reg >= 8) {
+        rex |= REX_BASE | REX_B;
+        rm -= 8;
+    }
+
+    switch(sz){
+        case 8:
+            imm = (uint8_t)eval_expr(val);
+            if (reg >= 4 && reg <= 7) rex |= REX_BASE;
+            break;
+
+        case 16:
+            mash_code[pos++] = 0x66;
+            imm = (uint16_t)eval_expr(val);
+            break;
+
+        case 32:
+            imm = (uint32_t)eval_expr(val);
+            break;
+
+        case 64:
+            imm = (uint32_t)eval_expr(val); 
+            rex |= REX_BASE | REX_W;
+            break;
+    }
+
+    if (sz == 8) opcode = 0x80;
+     
+    else {
+        int32_t simm = (int32_t)imm;
+        if (simm >= -128 && simm <= 127) opcode = 0x83;
+        else opcode = 0x81;
+        
+    }
+
+    // rax, eax, ax, al
+    if (reg == 0) {
+        if (rex) mash_code[pos++] = rex;
+
+        if (sz == 8) {
+            mash_code[pos++] = 0x04;
+            mash_code[pos++] = (uint8_t)imm;
+        } 
+        else {
+            mash_code[pos++] = 0x05;
+            if (sz == 16) {As16((uint16_t)imm, &mash_code[pos]); pos += 2;}
+            else {As32((uint32_t)imm, &mash_code[pos]); pos += 4;}
+        }
+
+        return pos;
+    }
+
+    modrm = emit_modrm(0b11, 0b000, rm);
+
+    if (rex) mash_code[pos++] = rex;
+    mash_code[pos++] = opcode;
+    mash_code[pos++] = modrm;
+
+    if (opcode == 0x83) {
+        mash_code[pos++] = (uint8_t)imm;
+    } 
+    else if (sz == 16) {
+        As16((uint16_t)imm, &mash_code[pos]); pos += 2;
+    } 
+    else if (sz == 32 || sz == 64) {
+        As32((uint32_t)imm, &mash_code[pos]); pos += 4;
+    } 
+    else {
+        mash_code[pos++] = (uint8_t)imm;
+    }
+
+    return pos;
+}
+
+uint8_t encode_add_reg_reg(uint8_t *mash_code, uint8_t dest, uint8_t src, uint8_t sz){
+    uint8_t legacy_prefix = 0x66;  // 16 bit
+    uint8_t rex = 0;
+    uint8_t opcode = (sz == 8) ? 0x00 : 0x01; // first ever instruction?
+    uint8_t modrm = 0;
+    uint8_t pos = 0;
+
+    uint8_t rm  = dest;
+    uint8_t reg = src;
+    
+    if(dest >= 8){
+        rex |= REX_BASE | REX_B;
+        rm -= 8;
+    }
+
+    if(src >= 8){
+        rex |= REX_BASE | REX_R;
+        reg -= 8;
+    }
+
+    // matematika in pyton
+    // 2+2=22
+    // 22+22=2222
+    // 222+222=222222
+    // 2222+2222=22222222
+
+    switch(sz){
+        case 8 : { if((dest >= 4 && dest <= 7) || (src >= 4 && src <= 7)){ rex |= REX_BASE;} break; } // spl, bpl, sil, dil
+        case 16: mash_code[pos++] = legacy_prefix; break;
+        case 32: break;
+        case 64: rex |= REX_BASE | REX_W; break;
+    }
+
+    modrm = emit_modrm(0b11, reg, rm);
+
+    if(rex)mash_code[pos++] = rex;
+    mash_code[pos++] = opcode;
+    mash_code[pos++] = modrm;
+
+    return pos;
+}
 
 typedef struct {
     OperandType type;
@@ -1967,8 +2117,13 @@ void parseInst(AST* node) {
         // MOV R64, [ADDR]
         else if (a.type == O_REG64 && b.type == O_MEM) {
             uint8_t reg = find_reg64_index(a.text);
+            AddrExpr mem = parse_addr_expr(b.text);
+            if(mem.is_rip_rel) {
+                node->ins.expr = mem;
+                node->ins.resolved = 0;
+            }
 
-            *s = encode_mov_rm_rm(machine_code, reg, b.text, 64, 0x8B);
+            *s = encode_inst_rm_rm(machine_code, reg, &mem, 64, 0x8B);
             pc += *s;
             return;
         }
@@ -1976,8 +2131,13 @@ void parseInst(AST* node) {
         // MOV R32, [ADDR]
         else if (a.type == O_REG32 && b.type == O_MEM) {
             uint8_t reg = find_reg32_index(a.text);
+            AddrExpr mem = parse_addr_expr(b.text);
+            if(mem.is_rip_rel) {
+                node->ins.expr = mem;
+                node->ins.resolved = 0;
+            }
 
-            *s = encode_mov_rm_rm(machine_code, reg, b.text, 32, 0x8B);
+            *s = encode_inst_rm_rm(machine_code, reg, &mem, 32, 0x8B);
             pc += *s;
             return;
         }
@@ -1985,8 +2145,13 @@ void parseInst(AST* node) {
         // MOV R16, [ADDR]
         else if (a.type == O_REG16 && b.type == O_MEM) {
             uint8_t reg = find_reg16_index(a.text);
+            AddrExpr mem = parse_addr_expr(b.text);
+            if(mem.is_rip_rel) {
+                node->ins.expr = mem;
+                node->ins.resolved = 0;
+            }
 
-            *s = encode_mov_rm_rm(machine_code, reg, b.text, 16, 0x8B);
+            *s = encode_inst_rm_rm(machine_code, reg, &mem, 16, 0x8B);
             pc += *s;
             return;
         }
@@ -1994,8 +2159,13 @@ void parseInst(AST* node) {
         // MOV R8, [ADDR]
         else if (a.type == O_REG8 && b.type == O_MEM) {
             uint8_t reg = find_reg8_index(a.text);
+            AddrExpr mem = parse_addr_expr(b.text);
+            if(mem.is_rip_rel) {
+                node->ins.expr = mem;
+                node->ins.resolved = 0;
+            }
 
-            *s = encode_mov_rm_rm(machine_code, reg, b.text, 8, 0x8A);
+            *s = encode_inst_rm_rm(machine_code, reg, &mem, 8, 0x8A);
             pc += *s;
             return;
         }
@@ -2008,8 +2178,13 @@ void parseInst(AST* node) {
         // MOV [ADDR], R64
         else if (a.type == O_MEM && b.type == O_REG64) {
             uint8_t reg = find_reg64_index(b.text);
+            AddrExpr mem = parse_addr_expr(a.text);
+            if(mem.is_rip_rel) {
+                node->ins.expr = mem;
+                node->ins.resolved = 0;
+            }
 
-            *s = encode_mov_rm_rm(machine_code, reg, a.text, 64, 0x89);
+            *s = encode_inst_rm_rm(machine_code, reg, &mem, 64, 0x89);
             pc += *s;
             return;
         }
@@ -2017,8 +2192,13 @@ void parseInst(AST* node) {
         // MOV [ADDR], R32
         else if (a.type == O_MEM && b.type == O_REG32) {
             uint8_t reg = find_reg32_index(b.text);
+            AddrExpr mem = parse_addr_expr(a.text);
+            if(mem.is_rip_rel) {
+                node->ins.expr = mem;
+                node->ins.resolved = 0;
+            }
 
-            *s = encode_mov_rm_rm(machine_code, reg, a.text, 32, 0x89);
+            *s = encode_inst_rm_rm(machine_code, reg, &mem, 32, 0x89);
             pc += *s;
             return;
         }
@@ -2026,8 +2206,13 @@ void parseInst(AST* node) {
         // MOV [ADDR], R16
         else if (a.type == O_MEM && b.type == O_REG16) {
             uint8_t reg = find_reg16_index(b.text);
+            AddrExpr mem = parse_addr_expr(a.text);
+            if(mem.is_rip_rel) {
+                node->ins.expr = mem;
+                node->ins.resolved = 0;
+            }
 
-            *s = encode_mov_rm_rm(machine_code, reg, a.text, 16, 0x89);
+            *s = encode_inst_rm_rm(machine_code, reg, &mem, 16, 0x89);
             pc += *s;
             return;
         }
@@ -2035,29 +2220,31 @@ void parseInst(AST* node) {
         // MOV [ADDR], R8
         else if (a.type == O_MEM && b.type == O_REG8) {
             uint8_t reg = find_reg8_index(b.text);
+            AddrExpr mem = parse_addr_expr(a.text);
+            if(mem.is_rip_rel) {
+                node->ins.expr = mem;
+                node->ins.resolved = 0;
+            }
 
-            *s = encode_mov_rm_rm(machine_code, reg, a.text, 8, 0x88);
+            *s = encode_inst_rm_rm(machine_code, reg, &mem, 8, 0x88);
             pc += *s;
             return;
         }
     
         // MOV R64, LABEL
-        else if ((is2arrin(regs64, node->ins.operands[0]) || is2arrin(regs64GP, node->ins.operands[0])) 
-            && node->ins.otype[1] == O_LABEL) {
+        else if (a.type == O_REG64 && b.type == O_LABEL) {
 
             uint8_t rex = REX_BASE | REX_W; 
             uint8_t opcode = 0xB8;
-            int reg_num = -1;
+            uint8_t reg = find_reg64_index(a.text);
+            uint8_t rm = reg;
 
-            if ((reg_num = indexof(regs64, node->ins.operands[0])) != -1) {
-                // rax..rdi
-            } 
-            else if ((reg_num = indexof(regs64GP, node->ins.operands[0])) != -1) {
-                rex |= REX_B; 
-            } 
-            else return;
+            if(reg >= 8){
+                rm -= 8;
+                rex |= REX_B;  
+            }  
 
-            opcode += reg_num;
+            opcode += rm;
             node->machine_code[0] = rex;
             node->machine_code[1] = opcode;
             As64(0x0000000000000000, &node->machine_code[2]); // placeholder
@@ -2069,7 +2256,7 @@ void parseInst(AST* node) {
         }
     }
 
-    // место для документации для add
+    // add -> add two operands 
 
     else if(strcasecmp(node->cmd, "add") == 0){
         
@@ -2078,161 +2265,190 @@ void parseInst(AST* node) {
         // =====================================
 
         // add r/m64, imm32
-        if(node->ins.otype[0] == O_REG64 && node->ins.otype[1] == O_IMM){
-            uint8_t opcode = 0x81; // add reg64/32, imm32
-            uint8_t modrm  = 0;
-            uint8_t rex    = REX_BASE | REX_W;
-            uint32_t imm32 = (uint32_t)atoi(node->ins.operands[1]);
-            int pos = 0;
-            uint8_t rm = 0;
+        if(a.type == O_REG64 && b.type == O_IMM){
+            uint8_t reg = find_reg64_index(a.text);
 
-
-            int idx = find_reg64_index(node->ins.operands[0]);
-            
-            // Special case
-            if(idx == 0b000){  // rax
-                node->machine_code[0] = 0x05;
-                As32(imm32, &node->machine_code[1]);
-                *s = 5;
-                pc += 5;
-                return;
-            }         
-            
-            if(idx != -1) { rm = idx; if(rm >= 8) rex |= REX_B; }
-            modrm = (0b11 << 6) | (0 << 3) | (rm & 7);
-
-            node->machine_code[pos++] = rex;
-            node->machine_code[pos++] = opcode;
-            node->machine_code[pos++] = modrm;
-            As32(imm32, &node->machine_code[pos]);
-            pos += 4;
-
-            *s = pos; // 7
-            pc += pos;
+            *s = encode_add_imm(machine_code, reg, b.text, 64); 
+            pc += *s;
         }
 
         // add r/m32, imm32
         else if(node->ins.otype[0] == O_REG32 && node->ins.otype[1] == O_IMM){
-            uint8_t opcode = 0x81; // add reg64/32, imm32
-            uint8_t modrm  = 0;
-            uint8_t rex    = 0;
-            uint32_t imm32 = (uint32_t)atoi(node->ins.operands[1]);
-            int pos = 0;
-            uint8_t rm = 0;
+            uint8_t reg = find_reg32_index(a.text);
 
-            int idx = find_reg32_index(node->ins.operands[0]);
-            
-            // Special case
-            if(idx == 0b000){  // eax
-                node->machine_code[0] = 0x05;
-                As32(imm32, &node->machine_code[1]);
-                *s = 5;
-                pc += 5;
-                return;
-            }
-            
-            if(idx != -1) { rm = idx; if(rm >= 8) rex = REX_BASE | REX_B; /* emit */} 
-            modrm = (0b11 << 6) | (0 << 3) | (rm & 7);
-
-            if(rex) node->machine_code[pos++] = rex;
-            node->machine_code[pos++] = opcode;
-            node->machine_code[pos++] = modrm;
-            As32(imm32, &node->machine_code[pos]);
-            pos += 4;
-
-            *s = pos; 
-            pc += pos;
+            *s = encode_add_imm(machine_code, reg, b.text, 32); 
+            pc += *s;
         }
 
         // add r/m16, imm16
         else if(node->ins.otype[0] == O_REG16 && node->ins.otype[1] == O_IMM){
-            uint8_t opcode = 0x81; // add r/m16, imm16
-            uint8_t modrm  = 0;
-            uint8_t rex    = 0;
-            uint8_t legacy_prefix = 0x66; 
-            uint32_t imm16 = (uint16_t)atoi(node->ins.operands[1]);
-            int pos = 0;
-            uint8_t rm = 0;
+            uint8_t reg = find_reg16_index(a.text);
 
-            int idx = find_reg16_index(node->ins.operands[0]);
-            
-            // Special case
-            if(idx == 0b000){ // ax
-                node->machine_code[0] = legacy_prefix;
-                node->machine_code[1] = 0x05;
-                As16(imm16, &node->machine_code[2]);
-                *s = 4;
-                pc += 4;
-                return;
-            } 
-
-            if(idx != -1) { rm = idx; if(rm >= 8) rex = REX_BASE | REX_B; }
-            modrm = (0b11 << 6) | (0 << 3) | (rm & 7);
-
-            node->machine_code[pos++] = legacy_prefix;
-            if(rex)node->machine_code[pos++] = rex;
-            node->machine_code[pos++] = opcode;
-            node->machine_code[pos++] = modrm;
-            As16(imm16, &node->machine_code[pos]);
-            pos += 2;
-
-            *s = pos; 
-            pc += pos;
+            *s = encode_add_imm(machine_code, reg, b.text, 16); 
+            pc += *s;
         }
 
         // add r/m8, imm8
-        else if(node->ins.otype[0] == O_REG8 && 
-            (node->ins.otype[1] == O_IMM || node->ins.otype[1] == O_CHAR)){
-            
-            uint8_t opcode = 0x80; // add r/m8, imm8
-            uint8_t modrm  = 0;
-            uint8_t rex    = 0; 
-            uint8_t imm8 = (uint8_t)atoi(node->ins.operands[1]);
-            int pos = 0;
-            uint8_t rm = 0;
-            
-            // unsupported high-byte registers (ah, bh, ch, dh)
-            const char* high_regs[] = {"ah", "bh", "ch", "dh", NULL};
-            for(int i = 0; high_regs[i] != NULL; i++) {
-                if(strcasecmp(node->ins.operands[0], high_regs[i]) == 0) {
-                    fprintf(stderr, "AmmAsm: high-byte registers (ah/bh/ch/dh) are not supported in ADD\n");
-                    exit(1); 
-                }
-            }
-            
-            int idx = find_reg8_index(node->ins.operands[0]);
-            
-            // Special case
-            if(idx == 0b000){ // al
-                node->machine_code[0] = 0x04;
-                node->machine_code[1] = imm8;
-                *s = 2;
-                pc += 2;
-                return;
-            }
-            
-            if(idx != -1) {
-                rm = idx;
-                // spl, bpl, sil, dil 
-                if(rm >= 4 && rm <= 7) rex = 0x40; 
-                else if(rm >= 8) rex = REX_BASE | REX_B;
-            }
-            
-            modrm = (0b11 << 6) | (0 << 3) | (rm & 7);
-            
-            if(rex) node->machine_code[pos++] = rex;
-            node->machine_code[pos++] = opcode;
-            node->machine_code[pos++] = modrm;
-            node->machine_code[pos++] = imm8;
-            
-            *s = pos; 
-            pc += pos;
+        else if(a.type == O_REG8 && b.type == O_IMM){
+            uint8_t reg = find_reg8_index(a.text);
+
+            *s = encode_add_imm(machine_code, reg, b.text, 8); 
+            pc += *s;
         }
 
         // ===========================================
         // 2. add reg, reg (mod = 11)
         // ===========================================
-        // SOON.....
+        
+        else if(a.type == O_REG64 && b.type == O_REG64){
+            uint8_t dest = find_reg64_index(a.text);
+            uint8_t src  = find_reg64_index(b.text);
+            
+
+            *s = encode_add_reg_reg(machine_code, dest, src, 64);
+            pc += *s;
+            return;
+        }
+
+        else if(a.type == O_REG32 && b.type == O_REG32){
+            uint8_t dest = find_reg32_index(a.text);
+            uint8_t src  = find_reg32_index(b.text);
+
+            *s = encode_add_reg_reg(machine_code, dest, src, 32);
+            pc += *s;
+            return;
+        }
+
+        else if(a.type == O_REG16 && b.type == O_REG16){
+            uint8_t dest = find_reg16_index(a.text);
+            uint8_t src  = find_reg16_index(b.text);
+
+            *s = encode_add_reg_reg(machine_code, dest, src, 16);
+            pc += *s;
+            return;
+        }
+
+        else if(a.type == O_REG8 && b.type == O_REG8){
+            uint8_t dest = find_reg8_index(a.text);
+            uint8_t src  = find_reg8_index(b.text);
+
+            *s = encode_add_reg_reg(machine_code, dest, src, 8);
+            pc += *s;
+            return;
+        }
+
+        // ===================
+        // 3. add reg, [addr]
+        // ===================
+
+        else if(a.type == O_REG64 && b.type == O_MEM){
+            uint8_t dest = find_reg64_index(a.text);
+            AddrExpr mem  = parse_addr_expr(b.text);
+            if(mem.is_rip_rel) {
+                node->ins.expr = mem;
+                node->ins.resolved = 0;
+            }
+
+            *s = encode_inst_rm_rm(machine_code, dest, &mem, 64, 0x03);
+            pc += *s;
+            return;
+        }
+
+        else if(a.type == O_REG32 && b.type == O_MEM){
+            uint8_t dest = find_reg32_index(a.text);
+            AddrExpr mem  = parse_addr_expr(b.text);
+            if(mem.is_rip_rel) {
+                node->ins.expr = mem;
+                node->ins.resolved = 0;
+            }
+
+            *s = encode_inst_rm_rm(machine_code, dest, &mem, 32, 0x03);
+            pc += *s;
+            return;
+        }
+
+        else if(a.type == O_REG16 && b.type == O_MEM){
+            uint8_t dest = find_reg16_index(a.text);
+            AddrExpr mem  = parse_addr_expr(b.text);
+            if(mem.is_rip_rel) {
+                node->ins.expr = mem;
+                node->ins.resolved = 0;
+            }
+
+            *s = encode_inst_rm_rm(machine_code, dest, &mem, 16, 0x03);
+            pc += *s;
+            return;
+        }
+
+        else if(a.type == O_REG8 && b.type == O_MEM){
+            uint8_t dest = find_reg8_index(a.text);
+            AddrExpr mem  = parse_addr_expr(b.text);
+            if(mem.is_rip_rel) {
+                node->ins.expr = mem;
+                node->ins.resolved = 0;
+            }
+            
+            *s = encode_inst_rm_rm(machine_code, dest, &mem, 8, 0x02);
+            pc += *s;
+            return;
+        }
+
+        // ================
+        // add [addr], reg
+        // ================
+
+        else if(a.type == O_REG64 && b.type == O_MEM){
+            uint8_t dest = find_reg64_index(a.text);
+            AddrExpr mem  = parse_addr_expr(b.text);
+            if(mem.is_rip_rel) {
+                node->ins.expr = mem;
+                node->ins.resolved = 0;
+            }
+
+            *s = encode_inst_rm_rm(machine_code, dest, &mem, 64, 0x01);
+            pc += *s;
+            return;
+        }
+
+        else if(a.type == O_REG32 && b.type == O_MEM){
+            uint8_t dest = find_reg32_index(a.text);
+            AddrExpr mem  = parse_addr_expr(b.text);
+            if(mem.is_rip_rel) {
+                node->ins.expr = mem;
+                node->ins.resolved = 0;
+            }
+
+            *s = encode_inst_rm_rm(machine_code, dest, &mem, 32, 0x01);
+            pc += *s;
+            return;
+        }
+
+        else if(a.type == O_REG16 && b.type == O_MEM){
+            uint8_t dest = find_reg16_index(a.text);
+            AddrExpr mem  = parse_addr_expr(b.text);
+            if(mem.is_rip_rel) {
+                node->ins.expr = mem;
+                node->ins.resolved = 0;
+            }
+
+            *s = encode_inst_rm_rm(machine_code, dest, &mem, 16, 0x01);
+            pc += *s;
+            return;
+        }
+
+        else if(a.type == O_REG8 && b.type == O_MEM){
+            uint8_t dest = find_reg8_index(a.text);
+            AddrExpr mem  = parse_addr_expr(b.text);
+            if(mem.is_rip_rel) {
+                node->ins.expr = mem;
+                node->ins.resolved = 0;
+            }
+            
+            *s = encode_inst_rm_rm(machine_code, dest, &mem, 8, 0x00);
+            pc += *s;
+            return;
+        }
+
     }
 
     // место для документации jmp/call
@@ -2746,7 +2962,7 @@ void compiler(uint8_t *text, int *textsize, uint64_t *e_entry) {
             parse_size_directives(&ast[i]);
         }
     }
-
+    expand_local_labels();
     *e_entry = collect_labels();
     resolve_labels();
 
@@ -2807,7 +3023,7 @@ void handl_pipeline(int argc, char **argv){ // second main() in 1 pthread (for k
 
 int main(int argc, char **argv){
     if (argc < 2) {
-        printf("AmmAsm v1.5: \033[5;41mFatal: No file given\033[0m\n");
+        printf("AmmAsm v1.6: \033[5;41mFatal: No file given\033[0m\n");
         return 1;
     }
 
@@ -2821,7 +3037,7 @@ int main(int argc, char **argv){
     }
 
     if (!input) {
-        printf("AmmAsm v1.5: \033[5;41mFatal: No input file given\033[0m\n");
+        printf("AmmAsm v1.6: \033[5;41mFatal: No input file given\033[0m\n");
         return 1; 
     }
 
